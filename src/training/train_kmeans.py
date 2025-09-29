@@ -10,8 +10,6 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
-
-
 def find_optimal_k_elbow(vector_feature: pd.DataFrame, max_k: int=15)-> int:
     """
     Calculates and plots the inertia for a range of k values to find the optimal k using the elbow method.
