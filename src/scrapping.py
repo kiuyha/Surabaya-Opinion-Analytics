@@ -3,18 +3,28 @@ from lxml import html
 import time
 import random
 import logging
-
+from datetime import datetime, timezone
+from urllib.parse import quote_plus
 
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
-
-def scrap_nitter(search_query: str, depth: int = -1)-> list:
+def safetly_extract_text(element: html, xpath: str, get_text: bool=True, attribute: str|None=None)-> str|None:
+    try:
+        if get_text:
+            return element.xpath(xpath)[0].text_content().strip()
+        else:
+            return element.xpath(xpath)[0].attrib.get(attribute).strip()
+    except:
+        return None
+        
+def scrap_nitter(search_query: str, depth: int = -1, time_budget: int = -1)-> list:
     """ This function is for scrapping tweets from twitter/X using Nitter
     Args:
         search_query (str): The query to search for
         depth (int): The depth of the search (default: -1 for infinite)
+        time_budget (int): The time budget for the search in seconds (default: -1 for infinite)
     Returns:
         list: A list of tweets
     Raises:
@@ -31,6 +41,9 @@ def scrap_nitter(search_query: str, depth: int = -1)-> list:
     if not isinstance(depth, int):
         raise TypeError("depth must be an integer")
     
+    if time_budget != -1 and not isinstance(time_budget, int):
+        raise TypeError("time_budget must be an integer")
+
     logging.info(f"Scraping tweets for query: {search_query} with depth: {depth}")
 
     headers = {
@@ -39,21 +52,15 @@ def scrap_nitter(search_query: str, depth: int = -1)-> list:
         'Upgrade-Insecure-Requests': '1',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
     }
-    next_link = f'?q={search_query}&f=tweets'
+    next_link = f'?q={quote_plus(search_query)}&f=tweets'
     scraped_data = []
-
-    def safetly_extract_text(element, xpath, get_text=True, attribute=None):
-        try:
-            if get_text:
-                return element.xpath(xpath)[0].text_content().strip()
-            else:
-                return element.xpath(xpath)[0].attrib.get(attribute).strip()
-        except:
-            return None
+    start_time = time.time()
+    elapsed_time = 0
 
     with httpx.Client(headers=headers, http2=True, timeout=None) as client:
         index = 1
-        while((next_link is not None) and ((index <= depth) or (depth == -1))):
+        while((next_link is not None) and ((index <= depth) or (depth == -1)) and (time_budget == -1 or elapsed_time <= time_budget)):
+            elapsed_time = time.time() - start_time
             try:
                 response = client.get(f'https://nitter.net/search{next_link}')
                 html_content = response.text
@@ -92,9 +99,36 @@ def scrap_nitter(search_query: str, depth: int = -1)-> list:
                     logging.info(f"Get empty response, reqs={index}, status code: {response.status_code}, length: {len(html_content)}")
                     break
                 elif status_code == 429:
-                    logging.info(f"Request failed with status code: {status_code}")
-                    # time.sleep(10)
-                    break
+                    logging.warning(f"Hit rate limit (429). Headers: {response.headers}")
+                    wait_seconds = None
+                    
+                    # Check if the server gave us instructions
+                    if 'retry-after' in response.headers:
+                        retry_value = response.headers['retry-after']
+                        
+                        # Case 1: The header is a number of seconds
+                        if retry_value.isdigit():
+                            wait_seconds = int(retry_value)
+                            
+                        # Case 2: The header is an HTTP-date
+                        else:
+                            try:
+                                retry_date = datetime.strptime(retry_value, "%a, %d %b %Y %H:%M:%S %Z").replace(tzinfo=timezone.utc)
+                                now = datetime.now(timezone.utc)
+                                # Calculate the difference in seconds
+                                wait_seconds = (retry_date - now).total_seconds()
+                            except ValueError:
+                                logging.error(f"Could not parse 'Retry-After' date: {retry_value}")
+                                break # Break if the date format is unexpected
+
+                    # If the server gave no instructions, or if the wait time is negative
+                    if wait_seconds is None or wait_seconds < 0:
+                        logging.warning("No valid 'Retry-After' header found. Breaking loop.")
+                        break
+
+                    # Safely wait and continue the loop
+                    logging.info(f"Waiting for {wait_seconds:.2f} seconds as instructed by the server...")
+                    time.sleep(wait_seconds)
                 else:
                     logging.info(f"Request failed with status code: {status_code}")
                     break
