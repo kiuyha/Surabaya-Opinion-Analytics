@@ -7,22 +7,14 @@ import nltk
 from nltk.corpus import stopwords
 from mpstemmer import MPStemmer
 from nltk.stem import WordNetLemmatizer
-from Config import unnecessary_hashtags, slang_mapping
-import logging
-
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+from .Config import log, unnecessary_hashtags, slang_mapping
 
 nltk.download('stopwords')
 nltk.download('wordnet')
 
-def get_tld_list():
-    """Fetches the latest list of TOP LEVEL DOMAIN such as .com, .net etc from IANA.
-
-    Returns:
-        list: A list of TLDs
+def get_tld_list()-> list:
+    """
+    Fetches the latest list of TOP LEVEL DOMAIN such as .com, .net etc from IANA.
     """
     url = "https://data.iana.org/TLD/tlds-alpha-by-domain.txt"
     try:
@@ -33,46 +25,29 @@ def get_tld_list():
         # The list may contain comments, so we filter them out.
         return [tld.lower() for tld in tlds if not tld.startswith('#')]
     except requests.exceptions.RequestException as e:
-        logging.error(f"Error fetching TLD list: {e}")
+        log.error(f"Error fetching TLD list: {e}")
         return []
 
 
 def split_hashtag(tag: str)-> str:
-    """ Splits a hashtag into separate words.
-
-    Args:
-        tag (str): The hashtag to split.
-
-    Returns:
-        str: The split hashtag.
-    """
     tag = tag.lstrip("#")
     return re.sub(r'([a-z])([0-9])', r'\1 \2', tag, flags=re.I)
 
 indonesian_stemmer = MPStemmer()
 english_lemmatizer = WordNetLemmatizer()
-
-def full_lemmatization(text: str)-> str:
-    """ Performs full lemmatization on the given text.
-
-    Args:
-        text (str): The text to lemmatize.
-
-    Returns:
-        str: The lemmatized text.
-    """
-
+def lemmatization(text: str, level: str = 'hard')-> str:
     # Normalize slang words
     words = text.split()
     normalized_words = [slang_mapping.get(word, word) for word in words]
     text = " ".join(normalized_words)
 
-    # Lemmatize English words
-    english_lemmatized_words = [english_lemmatizer.lemmatize(word) for word in text.split()]
-    text = " ".join(english_lemmatized_words)
+    if level == 'hard':
+        # Lemmatize English words
+        english_lemmatized_words = [english_lemmatizer.lemmatize(word) for word in text.split()]
+        text = " ".join(english_lemmatized_words)
 
-    # Stem Indonesian words
-    text = indonesian_stemmer.stem(text)
+        # Stem Indonesian words
+        text = indonesian_stemmer.stem(text)
 
     return text
 
@@ -137,12 +112,13 @@ def processing_text(text: str, level: str = 'hard') -> str:
         text = " ".join([word for word in text.split() if word not in all_stopwords])
 
         # Perform lemmatization to get the root form of words
-        text = full_lemmatization(text)
+        text = lemmatization(text, level=level)
 
     elif level == 'light':
         # Remove the '@' symbol from mentions but keep the name, as it's an entity (e.g., '@prabowo' -> 'prabowo')
         mention_pattern = re.compile(r'@(\w+)')
         text = mention_pattern.sub(r'\1', text)
+        text = lemmatization(text, level=level)
 
     # remove extra whitespace created during processing
     text = re.sub(r'\s+', ' ', text).strip()

@@ -2,13 +2,8 @@ import joblib
 from sklearn.cluster import KMeans
 from sklearn.feature_extraction.text import TfidfVectorizer
 from kneed import KneeLocator
-import logging
+from .Config import log
 import pandas as pd
-
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
 
 def find_optimal_k_elbow(vector_feature: pd.DataFrame, max_k: int=15)-> int:
     """
@@ -25,7 +20,7 @@ def find_optimal_k_elbow(vector_feature: pd.DataFrame, max_k: int=15)-> int:
     inertia_values = []
     k_range = range(2, max_k + 1) # Start from 2 clusters
 
-    logging.info(f"Finding optimal K...")
+    log.info(f"Finding optimal K...")
     for k in k_range:
         kmeans = KMeans(n_clusters=k, random_state=42)
         kmeans.fit(vector_feature)
@@ -36,9 +31,9 @@ def find_optimal_k_elbow(vector_feature: pd.DataFrame, max_k: int=15)-> int:
     optimal_k = kn.elbow
 
     if optimal_k:
-        logging.info(f"Optimal K found: {optimal_k}")
+        log.info(f"Optimal K found: {optimal_k}")
     else:
-        logging.info("Could not automatically find an elbow. Please inspect the plot.")
+        log.info("Could not automatically find an elbow. Please inspect the plot.")
         optimal_k = 5 # Fallback to a default value if no elbow is found
 
     return optimal_k
@@ -52,18 +47,18 @@ def train_kmeans(vector_feature: pd.DataFrame, num_topics: int)-> None:
         vector_feature (pd.DataFrame): The vectorized text data.
         num_topics (int): The number of topics to cluster.
     """
-    logging.info(f"\nFitting K-Means with K={num_topics}...")
+    log.info(f"\nFitting K-Means with K={num_topics}...")
     
     kmeans = KMeans(n_clusters=num_topics, random_state=42, n_init='auto')
     kmeans.fit(vector_feature)
 
-    logging.info(f"Top keywords for the {num_topics} discovered topics:")
+    log.info(f"Top keywords for the {num_topics} discovered topics:")
     terms = vector_feature.columns
     order_centroids = kmeans.cluster_centers_.argsort()[:, ::-1]
 
     for i in range(num_topics):
         top_terms = [terms[ind] for ind in order_centroids[i, :10]]
-        logging.info(f"Topic #{i}: {', '.join(top_terms)}")
+        log.info(f"Topic #{i}: {', '.join(top_terms)}")
     
     # Save the trained model
     joblib.dump(kmeans, 'kmeans_model.joblib')
