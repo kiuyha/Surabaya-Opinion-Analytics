@@ -19,3 +19,6 @@ jobs:
 
       - name: Run the training script
         run: python3 training/train_kmeans.py
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_REPO_KMEANS_ID: ${{ secrets.HF_REPO_KMEANS_ID }}

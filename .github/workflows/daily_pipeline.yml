@@ -22,3 +22,9 @@ jobs:
       
       - name: Run the main.py
         run: python3 main.py
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_REPO_KMEANS_ID: ${{ secrets.HF_REPO_KMEANS_ID }}
+          HF_REPO_NER_ID: ${{ secrets.HF_REPO_NER_ID }}

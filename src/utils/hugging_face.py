@@ -5,8 +5,8 @@ from huggingface_hub import HfFolder
 
 load_dotenv()
 
-HF_REPO_KMEANS_ID = os.getenv("HF_REPO_KMEANS_ID")
-HF_REPO_NER_ID = os.getenv("HF_REPO_NER_ID")
+HF_REPO_KMEANS_ID = os.environ.get("HF_REPO_KMEANS_ID")
+HF_REPO_NER_ID = os.environ.get("HF_REPO_NER_ID")
 
 def get_hf_token() -> str:
     """
