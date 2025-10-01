@@ -4,7 +4,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from kneed import KneeLocator
 from src.core import log, supabase
 from src.utils.gemini_api import labeling_cluster
-from utils.hugging_face import get_hf_token, HF_REPO_KMEANS_ID
+from src.utils.hugging_face import get_hf_token, HF_REPO_KMEANS_ID
 from typing import Tuple, Dict, List, Any
 import polars as pl
 import numpy as np
