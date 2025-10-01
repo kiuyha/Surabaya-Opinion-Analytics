@@ -12,21 +12,24 @@ from .core import log, config
 nltk.download('stopwords')
 nltk.download('wordnet')
 
-def get_tld_list()-> list:
+def get_tld_list(retry_count: int = 3)-> list:
     """
     Fetches the latest list of TOP LEVEL DOMAIN such as .com, .net etc from IANA.
     """
     url = "https://data.iana.org/TLD/tlds-alpha-by-domain.txt"
-    try:
-        response = requests.get(url)
-        response.raise_for_status()  # Raise an exception for bad status codes
-        tlds = response.text.strip().split('\n')
+    while retry_count > 0:
+        try:
+            response = requests.get(url)
+            response.raise_for_status()  # Raise an exception for bad status codes
+            tlds = response.text.strip().split('\n')
 
-        # The list may contain comments, so we filter them out.
-        return [tld.lower() for tld in tlds if not tld.startswith('#')]
-    except requests.exceptions.RequestException as e:
-        log.error(f"Error fetching TLD list: {e}")
-        return []
+            log.info("Fetched TLD list successfully.")
+            # The list may contain comments, so we filter them out.
+            return [tld.lower() for tld in tlds if not tld.startswith('#')]
+        except requests.exceptions.RequestException as e:
+            log.error(f"Error fetching TLD list: {e} (Retrying...)")
+            retry_count -= 1
+    return []
 
 
 def split_hashtag(tag: str)-> str:
@@ -51,6 +54,7 @@ def lemmatization(text: str, level: str = 'hard')-> str:
 
     return text
 
+tld_list = get_tld_list()
 def processing_text(text: str, level: str = 'hard') -> str:
     """ Performs preprocessing on the given text for different NLP tasks.
 
@@ -72,7 +76,7 @@ def processing_text(text: str, level: str = 'hard') -> str:
     text = unicodedata.normalize('NFKC', text)
 
     # Remove URLs and email addresses as they are noise for both tasks
-    tld_pattern_group = '|'.join(re.escape(tld) for tld in get_tld_list())
+    tld_pattern_group = '|'.join(re.escape(tld) for tld in tld_list)
     url_pattern = re.compile(
         'https?://\\S+|www\\.\\S+|[\\w\\.-]+\\.(?:' + tld_pattern_group + ')[\\S]*'
     )

@@ -1,74 +1,86 @@
 import joblib
 from sklearn.cluster import KMeans
 from sklearn.feature_extraction.text import TfidfVectorizer
-from kneed import KneeLocator
+from sklearn.decomposition import TruncatedSVD
+from sklearn.pipeline import Pipeline, make_pipeline
+from sklearn.metrics import silhouette_score
 from src.core import log, supabase
 from src.utils.gemini_api import labeling_cluster
 from src.utils.hugging_face import get_hf_token, HF_REPO_KMEANS_ID
+from src.preprocess import processing_text
 from typing import Tuple, Dict, List, Any
 import polars as pl
 import numpy as np
 import os
 from huggingface_hub import HfApi
 
-def vectorize(texts: pl.Series) -> Tuple[TfidfVectorizer, np.ndarray]:
+def text_pipeline(texts: pl.Series, n_components: int) -> Tuple[Pipeline, np.ndarray]:
     """
-    Converts a series of text documents into a TF-IDF matrix.
+    Converts a series of text documents into a vector representation using TF-IDF.
     Returns:
-        Tuple[TfidfVectorizer, np.ndarray]: The vectorizer and the TF-IDF matrix
+        Tuple[Pipeline, np.ndarray]: The lsa_pipeline and the vectorized text data.
     """
     vectorizer = TfidfVectorizer(max_features=2000)
-    X_vectorized = vectorizer.fit_transform(texts)
 
-    return vectorizer, X_vectorized
+    # Perform dimensionality reduction using SVD to lower the risk of smooth elbow plots
+    svd = TruncatedSVD(n_components=n_components, random_state=42)
+    
+    # Step 3: Create a pipeline that performs both steps in sequence
+    lsa_pipeline = make_pipeline(vectorizer, svd)
+    
+    # Fit the entire pipeline to the data and transform it
+    vectors_reduced = lsa_pipeline.fit_transform(texts.to_numpy())
+    
+    log.info(f"LSA complete. New matrix shape: {vectors_reduced.shape}")
 
-def find_optimal_k(vectors: np.ndarray, max_k: int=15)-> int:
+    return lsa_pipeline, vectors_reduced
+
+def find_optimal_k(vectors: np.ndarray, max_k: int = 15) -> int:
     """
-    Calculates and plots the inertia for a range of k values to find the optimal k using the elbow method.
-
-    Args:
-        vectors (np.ndarray): The vectorized text data.
-        feature_name (str): Name of the vectorization method for plot title.
-        max_k (int): The maximum number of clusters to test.
-
-    Returns:
-        int: The optimal number of clusters (k).
+    Finds the optimal k using the Silhouette Score instead of the elbow method, which is better for overlapping data.
     """
+    log.info("Finding optimal K using Silhouette Score...")
+    k_range = range(2, max_k + 1)
+    silhouette_scores = []
 
-    log.info(f"Finding optimal K...")
-    k_range = range(2, max_k + 1) # at least it would have 2 clusters
-    inertia_values = [
-        KMeans(n_clusters=k, random_state=42).fit(vectors).inertia_
-        for k in k_range
-    ]
+    for k in k_range:
+        kmeans = KMeans(n_clusters=k, random_state=42, n_init='auto')
+        labels = kmeans.fit_predict(vectors)
+        score = silhouette_score(vectors, labels)
+        silhouette_scores.append(score)
+        log.info(f"Silhouette Score for K={k}: {score:.4f}")
 
-    # The KneeLocator finds the point of maximum curvature in the plot
-    kn = KneeLocator(list(k_range), inertia_values, curve='convex', direction='decreasing')
-    optimal_k = kn.elbow
-
-    if optimal_k:
-        log.info(f"Optimal K found: {optimal_k}")
+    # Find the k with the highest silhouette score
+    if silhouette_scores:
+        optimal_k = k_range[np.argmax(silhouette_scores)]
+        log.info(f"Optimal K found via Silhouette Score: {optimal_k}")
     else:
-        log.info("Could not automatically find an elbow. Please inspect the plot.")
-        optimal_k = 5 # Fallback to a default value if no elbow is found
+        log.warning("Could not calculate silhouette scores. Falling back to K=5.")
+        optimal_k = 5
 
     return optimal_k
 
-def train_cluster_model(vectors: np.ndarray, vectorizer: TfidfVectorizer, num_topics: int) -> Tuple[KMeans, Dict[int, List[str]]]:
+def train_cluster_model(vectors: np.ndarray, text_pipeline: Pipeline, num_topics: int) -> Tuple[KMeans, Dict[int, List[str]]]:
     """Trains K-Means and extracts top keywords for each topic."""
     log.info(f"Fitting K-Means with K={num_topics}...")
     kmeans_model = KMeans(n_clusters=num_topics, random_state=42, n_init='auto')
     kmeans_model.fit(vectors)
     log.info("K-Means fitting complete.")
 
-    # Get the actual terms (words) from the vectorizer
+    # Get the actual terms (words) from the lsa_pipeline
     log.info(f"Extracting top keywords for the {num_topics} discovered topics...")
-    terms = vectorizer.get_feature_names_out()
-    order_centroids = kmeans_model.cluster_centers_.argsort()[:, ::-1]
+    terms = text_pipeline.named_steps['tfidfvectorizer'].get_feature_names_out()
+
+    # Get the SVD component matrix
+    svd_components = text_pipeline.named_steps['truncatedsvd'].components_
+
+    # Map cluster centers back to the original feature space
+    original_space_centroids = kmeans_model.cluster_centers_.dot(svd_components)
+    order_centroids = original_space_centroids.argsort()[:, ::-1]
 
     keywords_by_topic = {}
     for i in range(num_topics):
-        top_terms = [terms[ind] for ind in order_centroids[i, :10]]
+        top_terms = [terms[ind] for ind in order_centroids[i, :20]]
         keywords_by_topic[i] = top_terms
         log.info(f"Topic #{i}: {', '.join(top_terms)}")
     
@@ -102,7 +114,7 @@ def save_to_supabase(keywords_by_topic: Dict[int, List[str]])-> List[Dict[str, A
         log.error(f"Failed to update topics in Supabase: {e}", exc_info=True)
         return []
 
-def push_models_to_hf(kmeans_model: KMeans, vectorizer: TfidfVectorizer):
+def push_models_to_hf(kmeans_model: KMeans, text_pipeline: Pipeline):
     """Saves models locally, then pushes them to the Hugging Face Hub."""
     log.info(f"Preparing to push models to Hugging Face Hub repo: {HF_REPO_KMEANS_ID}")
     
@@ -115,9 +127,9 @@ def push_models_to_hf(kmeans_model: KMeans, vectorizer: TfidfVectorizer):
     
     # Save models locally first
     kmeans_filename = "kmeans_model.joblib"
-    vectorizer_filename = "vectorizer.joblib"
+    text_pipeline_filename = "text_pipeline.joblib"
     joblib.dump(kmeans_model, kmeans_filename)
-    joblib.dump(vectorizer, vectorizer_filename)
+    joblib.dump(text_pipeline, text_pipeline_filename)
     
     # Upload files to the Hugging Face Hub
     try:
@@ -129,10 +141,10 @@ def push_models_to_hf(kmeans_model: KMeans, vectorizer: TfidfVectorizer):
             token=token
         )
         
-        log.info(f"Uploading {vectorizer_filename}...")
+        log.info(f"Uploading {text_pipeline_filename}...")
         api.upload_file(
-            path_or_fileobj=vectorizer_filename,
-            path_in_repo=vectorizer_filename,
+            path_or_fileobj=text_pipeline_filename,
+            path_in_repo=text_pipeline_filename,
             repo_id=HF_REPO_KMEANS_ID,
             token=token
         )
@@ -142,31 +154,35 @@ def push_models_to_hf(kmeans_model: KMeans, vectorizer: TfidfVectorizer):
     finally:
         # Clean up local files
         os.remove(kmeans_filename)
-        os.remove(vectorizer_filename)
+        os.remove(text_pipeline_filename)
 
 if __name__ == "__main__":    
     # Load the tweets from Supabase
     log.info('Loading tweets from Supabase...')
-    tweets = supabase.table('tweets').select('text_content').execute().data
+    tweets = supabase.table('tweets').select('id', 'text_content').execute().data
     if not tweets:
         raise Exception("No tweets found in Supabase")
     
     df = pl.DataFrame(tweets)
     
     # Mark training in progress
-    supabase.table('app_config').uplate({"value": True}).eq('key', 'training-in-progress').execute()
+    supabase.table('app_config').update({"value": True}).eq('key', 'training-in-progress').execute()
+
+    df = df.with_columns(
+        pl.col('text_content').map_elements(processing_text)
+    )
 
     # Load the vectorized text data
-    vectorizer, vectors = vectorize(df['text_content'])
+    lsa_pipeline, vectors = text_pipeline(df['text_content'], n_components=100)
 
-    # Find the best K using the elbow method
+    # Find the best K using the silhouette method
     best_k = find_optimal_k(vectors, max_k=15)
 
     # Fit the K-Means model
-    kmeans_model, keywords = train_cluster_model(vectors, vectorizer ,num_topics=best_k)
+    kmeans_model, keywords = train_cluster_model(vectors, lsa_pipeline ,num_topics=best_k)
 
     # temporarily add the cluster label to the dataframe
-    df_with_labels = df.with_columns(
+    df = df.with_columns(
         pl.Series(name="cluster_kmeans_label", values=kmeans_model.labels_)
     )
 
@@ -175,19 +191,19 @@ if __name__ == "__main__":
     if newly_created_topics:
         # Create the mapping from K-Means label to permanent DB ID
         kmeans_label_to_db_id = {i: topic['id'] for i, topic in enumerate(newly_created_topics)}
-        df_with_topics = df_with_labels.with_columns(
+        df = df.with_columns(
             pl.col('cluster_kmeans_label').replace(kmeans_label_to_db_id).alias('topic_id')
         )
 
         log.info("Updating the 'topic_id' in 'tweets' table...")
 
-        update_data = df_with_topics[['id', 'topic_id']].to_dicts()
+        update_data = df[['id', 'topic_id']].to_dicts()
         supabase.table('tweets').upsert(update_data).execute()
         
-        log.info("Successfully updated tweet-topic relationships.")
+        log.info("Successfully updated tweet-topic.")
 
     # Push models to Hugging Face Hub
-    push_models_to_hf(kmeans_model, vectorizer)
+    push_models_to_hf(kmeans_model, lsa_pipeline)
 
     # Mark training complete
-    supabase.table('app_config').uplate({"value": False}).eq('key', 'training-in-progress').execute()
+    supabase.table('app_config').update({"value": False}).eq('key', 'training-in-progress').execute()
