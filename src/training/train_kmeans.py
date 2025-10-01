@@ -74,7 +74,7 @@ def train_cluster_model(vectors: np.ndarray, vectorizer: TfidfVectorizer, num_to
     
     return kmeans_model, keywords_by_topic
 
-def save_to_supabase(keywords_by_topic: Dict[int, List[str]])-> List[str, Any]:
+def save_to_supabase(keywords_by_topic: Dict[int, List[str]])-> List[Dict[str, Any]]:
     """Saves the topic labels and keywords to the 'topics' table in Supabase."""
     log.info("updating topic labels and keywords to Supabase...")
 
