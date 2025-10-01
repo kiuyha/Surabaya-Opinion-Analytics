@@ -35,12 +35,12 @@ def text_pipeline(texts: pl.Series, n_components: int) -> Tuple[Pipeline, np.nda
 
     return lsa_pipeline, vectors_reduced
 
-def find_optimal_k(vectors: np.ndarray, max_k: int = 15) -> int:
+def find_optimal_k(vectors: np.ndarray, min_k: int = 2, max_k: int = 15) -> int:
     """
     Finds the optimal k using the Silhouette Score instead of the elbow method, which is better for overlapping data.
     """
     log.info("Finding optimal K using Silhouette Score...")
-    k_range = range(2, max_k + 1)
+    k_range = range(min_k, max_k + 1)
     silhouette_scores = []
 
     for k in k_range:
@@ -198,7 +198,7 @@ if __name__ == "__main__":
     lsa_pipeline, vectors = text_pipeline(df['text_content'], n_components=100)
 
     # Find the best K using the silhouette method
-    best_k = find_optimal_k(vectors, max_k=15)
+    best_k = find_optimal_k(vectors, min_k=4, max_k=10) # min_k because if it too small the topic become too generic and max_k because if it too large the topic become too specific
 
     # Fit the K-Means model
     kmeans_model, keywords = train_cluster_model(vectors, lsa_pipeline ,num_topics=best_k)
