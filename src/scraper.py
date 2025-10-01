@@ -16,13 +16,17 @@ def safetly_extract_text(element: html, xpath: str, attribute: Optional[str] = N
     except:
         return None
 
-def exctract_id_tweet(tweet)-> str:
+def exctract_id_tweet(tweet)-> Optional[str]:
     tweet_link = safetly_extract_text(tweet, './/a[contains(@class, "tweet-link")]', attribute='href')
+    if not tweet_link:
+        return None
     tweet_id = tweet_link.split('/')[-1].split('#')[0]
     return tweet_id
 
-def get_posted_at(tweet)-> datetime:
+def get_posted_at(tweet)-> Optional[datetime]:
     time_string = safetly_extract_text(tweet, './/span[contains(@class,"tweet-date")]/a', attribute='title')
+    if not time_string:
+        return None
     return datetime.strptime(time_string.replace('·', ''), "%b %d, %Y %I:%M %p %Z")
 
 def extract_new_tweets_and_next_link(html_content: str)-> Tuple[list, Optional[str]]:
@@ -33,17 +37,18 @@ def extract_new_tweets_and_next_link(html_content: str)-> Tuple[list, Optional[s
     # we use list comprehension since it more fast than for loop
     scraped_tweets = [
         {
-            'id': exctract_id_tweet(tweet),
+            'id': tweet_id,
             'fullname': safetly_extract_text(tweet, './/a[contains(@class, "fullname")]'),
             'username': safetly_extract_text(tweet, './/a[contains(@class, "username")]'),
             'text_content': safetly_extract_text(tweet, './/div[contains(@class, "tweet-content")]'),
-            'posted_at': get_posted_at(tweet).isoformat(),
+            'posted_at': (posted_at_dt.isoformat() if (posted_at_dt := get_posted_at(tweet))  else None),
             'like_count': int((safetly_extract_text(tweet, './/span[contains(@class, "tweet-stat") and .//span[contains(@class, "icon-heart")]]') or '0').replace(',', '')),
             'comment_count': int((safetly_extract_text(tweet, './/span[contains(@class, "tweet-stat") and .//span[contains(@class, "icon-comment")]]') or '0').replace(',', '')),
             'retweet_count': int((safetly_extract_text(tweet, './/span[contains(@class, "tweet-stat") and .//span[contains(@class, "icon-retweet")]]') or '0').replace(',', '')),
             'quote_count': int((safetly_extract_text(tweet, './/span[contains(@class, "tweet-stat") and .//span[contains(@class, "icon-quote")]]') or '0').replace(',', '')),
         }
         for tweet in list_tweets
+        if (tweet_id := exctract_id_tweet(tweet))
     ]
 
     # Check if there is duplicate by compare the id with id in database
@@ -89,7 +94,7 @@ def scrap_nitter(search_query: str, depth: int = -1, time_budget: int = -1)-> li
     if time_budget != -1 and not isinstance(time_budget, int):
         raise TypeError("time_budget must be an integer")
 
-    log.info(f"Scraping tweets for query: {search_query} with depth: {depth}")
+    log.info(f"Scraping tweets for query: {search_query} with depth: {depth} and time budget: {time_budget}")
 
     headers = {
         'User-Agent': 'Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36',
