@@ -17,6 +17,9 @@ jobs:
         with:
           python-version: 3.13
 
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
       - name: Run the training script
         run: python3 src/training/train_kmeans.py
         env:
