@@ -159,11 +159,33 @@ def push_models_to_hf(kmeans_model: KMeans, text_pipeline: Pipeline):
 if __name__ == "__main__":    
     # Load the tweets from Supabase
     log.info('Loading tweets from Supabase...')
-    tweets = supabase.table('tweets').select('id', 'text_content').execute().data
-    if not tweets:
+
+    # we use pagination method since the supabase only load 1000 tweets at a time in default (could be increased but using pagination is more reliable)
+    all_tweets = []
+    page_size = 1000
+    current_page = 0
+
+    while True:
+        # Fetch one page of data
+        response = supabase.table('tweets') \
+            .select('id', 'text_content') \
+            .limit(page_size) \
+            .offset(current_page * page_size) \
+            .execute()
+        
+        page_of_tweets = response.data        
+        if not page_of_tweets:
+            break
+        
+        # Add the fetched tweets to our main list and go to the next page
+        all_tweets.extend(page_of_tweets)
+        current_page += 1
+
+    if not all_tweets:
         raise Exception("No tweets found in Supabase")
     
-    df = pl.DataFrame(tweets)
+    log.info(f"Loaded {len(all_tweets)} tweets from Supabase.")
+    df = pl.DataFrame(all_tweets)
     
     # Mark training in progress
     supabase.table('app_config').update({"value": True}).eq('key', 'training-in-progress').execute()
