@@ -21,7 +21,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Run the training script
-        run: python3 src/training/train_kmeans.py
+        run: python3 -m src.training.train_kmeans
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           HF_REPO_KMEANS_ID: ${{ secrets.HF_REPO_KMEANS_ID }}

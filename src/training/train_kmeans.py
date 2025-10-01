@@ -3,7 +3,7 @@ from sklearn.cluster import KMeans
 from sklearn.feature_extraction.text import TfidfVectorizer
 from kneed import KneeLocator
 from src.core import log, supabase
-from utils.gemini_api import labeling_cluster
+from src.utils.gemini_api import labeling_cluster
 from utils.hugging_face import get_hf_token, HF_REPO_KMEANS_ID
 from typing import Tuple, Dict, List, Any
 import polars as pl
