@@ -44,14 +44,14 @@ class Config:
         """
         Fetches the search configuration from Supabase.
         """
-        if self._search_config is None:
+        if self._scrape_config is None:
             log.info("Fetching search config from Supabase...")
             response = self._get_app_config(key='scrape-config')
             if response is None:
                 raise Exception("Search config not found in Supabase")
             else:
-                self._search_config = response
-        return self._search_config
+                self._scrape_config = response
+        return self._scrape_config
         
     @property
     def unnecessary_hashtags(self) -> set:
