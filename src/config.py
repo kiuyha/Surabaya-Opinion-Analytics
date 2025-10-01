@@ -95,7 +95,7 @@ class Config:
         """
         Fetches the slang mapping dictionary for preprocessing from Supabase.
         """
-        if self._unnecessary_hashtags is None:
+        if self._slang_mapping is None:
             log.info("Fetching slang mapping from Supabase...")
             default_value = {
                 "gimik": "gimmick",
@@ -121,9 +121,9 @@ class Config:
                 "lmfao": "laughing my fucking ass off",
                 "roflmao": "rolling on floor laughing my ass off",
             }
-            self._unnecessary_hashtags = self._get_app_config(
+            self._slang_mapping = self._get_app_config(
                 key='slang-mapping',
                 default_value=default_value
             )
             
-        return self._unnecessary_hashtags
+        return self._slang_mapping
