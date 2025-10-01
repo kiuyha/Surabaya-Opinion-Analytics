@@ -29,6 +29,8 @@ if __name__ == "__main__":
         )
     ]
 
+    log.info(f"Found {len(new_data)} new tweets.")
+
     # Insert new tweets
     supabase.table('tweets').insert(new_data).execute()
     
