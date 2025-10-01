@@ -23,7 +23,7 @@ if __name__ == "__main__":
         for search in config.scrape_config
         if search.get('query') is not None 
         for tweet_data in scrap_nitter(
-            search=search['query'],
+            search_query=search['query'],
             depth=search.get('depth', -1),
             time_budget=search.get('time_budget', -1)
         )
