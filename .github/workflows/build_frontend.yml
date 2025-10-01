@@ -1,7 +1,12 @@
-name: Daily Pipeline
+name: Build and Deploy Frontend
 
 on:
   push:
+    branches:
+      - main
+
+permissions:
+  contents: write
 
 jobs:
   build:
