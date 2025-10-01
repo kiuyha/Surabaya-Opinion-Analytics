@@ -39,5 +39,5 @@ if __name__ == "__main__":
     supabase.table('tweets').insert(new_data).execute()
     
     # Doing preprocessing
-    ner_data = processing_text(new_data, level='light')
-    kmeans_data = processing_text(new_data, level='hard') 
+    # ner_data = processing_text(new_data, level='light')
+    # kmeans_data = processing_text(new_data, level='hard') 
