@@ -4,7 +4,7 @@ import time
 import random
 from datetime import datetime, timezone
 from urllib.parse import quote_plus
-from .Config import log, Client
+from .core import log, supabase
 from typing import Tuple, Optional
 from datetime import datetime
 
@@ -50,7 +50,7 @@ def extract_new_tweets_and_next_link(html_content: str)-> Tuple[list, Optional[s
     # Check if there is duplicate by compare the id with id in database
     scraped_ids = [tweet['id'] for tweet in scraped_tweets if tweet['id']]
     try:
-        response = Client.table('tweets').select('id').in_('id', scraped_ids).execute()
+        response = supabase.table('tweets').select('id').in_('id', scraped_ids).execute()
         existing_ids = {item['id'] for item in response.data}
     except Exception as e:
         log.error(f"An error occurred while checking Supabase: {e}")

@@ -15,7 +15,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v2
         with:
-          python-version: 3.9
+          python-version: 3.13
 
       - name: Run the training script
         run: python3 training/train_kmeans.py

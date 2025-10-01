@@ -7,7 +7,7 @@ import nltk
 from nltk.corpus import stopwords
 from mpstemmer import MPStemmer
 from nltk.stem import WordNetLemmatizer
-from .Config import log, unnecessary_hashtags, slang_mapping
+from .core import log, config
 
 nltk.download('stopwords')
 nltk.download('wordnet')
@@ -38,7 +38,7 @@ english_lemmatizer = WordNetLemmatizer()
 def lemmatization(text: str, level: str = 'hard')-> str:
     # Normalize slang words
     words = text.split()
-    normalized_words = [slang_mapping.get(word, word) for word in words]
+    normalized_words = [config.slang_mapping.get(word, word) for word in words]
     text = " ".join(normalized_words)
 
     if level == 'hard':
@@ -83,7 +83,7 @@ def processing_text(text: str, level: str = 'hard') -> str:
     # Remove unnecessary hashtags and split meaningful ones into words
     hashtags = re.findall(r"#\w+", text)
     for tag in hashtags:
-        if tag.lower() not in unnecessary_hashtags:
+        if tag.lower() not in config.unnecessary_hashtags:
             text = text.replace(tag, split_hashtag(tag))
         else:
             text = text.replace(tag, "")

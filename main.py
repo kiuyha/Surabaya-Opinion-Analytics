@@ -1,11 +1,37 @@
-from src.scrapping import scrap_nitter
+"""
+This file only run for daily pipeline to get new tweets. For the monthly retrain, use training/train_kmeans.py
+"""
+from datetime import datetime, timezone
+from src.core import config, supabase, log
+from src.scraper import scrap_nitter
+from src.preprocess import processing_text
 
+if __name__ == "__main__":
+    response = supabase.table('app_config').select('value').eq('key', 'training-in-progress').single().execute()
+    if response.data['value']:
+        log.info("Training in progress, skipping daily pipeline.")
+        exit()
 
+    # Update last-updated
+    utc_now = datetime.now(timezone.utc)
+    supabase.table('app_config').update({"value": utc_now.isoformat()}).eq('key', 'last-updated').execute()
 
-arr = scrap_nitter(
-    "Surabaya (keluhan OR komplain OR lapor OR aduan OR masalah OR parah OR jelek OR buruk OR mengecewakan OR layanan OR penanganan) (min OR tolong OR @) lang:id -filter:retweets",
-    # time_budget=1*60*60
-    depth=1
-)
+    # Get new tweets (using list comprehension for efficiency)
+    new_data = [
+        tweet_data
 
-print(arr)
+        for search in config.scrape_config
+        if search.get('query') is not None 
+        for tweet_data in scrap_nitter(
+            search=search['query'],
+            depth=search.get('depth', -1),
+            time_budget=search.get('time_budget', -1)
+        )
+    ]
+
+    # Insert new tweets
+    supabase.table('tweets').insert(new_data).execute()
+    
+    # Doing preprocessing
+    ner_data = processing_text(new_data, level='light')
+    kmeans_data = processing_text(new_data, level='hard') 
