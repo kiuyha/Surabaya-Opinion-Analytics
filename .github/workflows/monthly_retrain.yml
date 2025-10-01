@@ -27,3 +27,4 @@ jobs:
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           HF_REPO_KMEANS_ID: ${{ secrets.HF_REPO_KMEANS_ID }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
