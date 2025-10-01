@@ -23,5 +23,7 @@ jobs:
       - name: Run the training script
         run: python3 -m src.training.train_kmeans
         env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           HF_REPO_KMEANS_ID: ${{ secrets.HF_REPO_KMEANS_ID }}
