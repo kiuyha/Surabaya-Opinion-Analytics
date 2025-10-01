@@ -6,7 +6,6 @@ from datetime import datetime, timezone
 from urllib.parse import quote_plus
 from .core import log, supabase
 from typing import Tuple, Optional
-from datetime import datetime
 
 def safetly_extract_text(element: html, xpath: str, attribute: Optional[str] = None)-> Optional[str]:
     try:
@@ -38,7 +37,7 @@ def extract_new_tweets_and_next_link(html_content: str)-> Tuple[list, Optional[s
             'fullname': safetly_extract_text(tweet, './/a[contains(@class, "fullname")]'),
             'username': safetly_extract_text(tweet, './/a[contains(@class, "username")]'),
             'text_content': safetly_extract_text(tweet, './/div[contains(@class, "tweet-content")]'),
-            'posted_at': get_posted_at(tweet),
+            'posted_at': get_posted_at(tweet).isoformat(),
             'like_count': int((safetly_extract_text(tweet, './/span[contains(@class, "tweet-stat") and .//span[contains(@class, "icon-heart")]]') or '0').replace(',', '')),
             'comment_count': int((safetly_extract_text(tweet, './/span[contains(@class, "tweet-stat") and .//span[contains(@class, "icon-comment")]]') or '0').replace(',', '')),
             'retweet_count': int((safetly_extract_text(tweet, './/span[contains(@class, "tweet-stat") and .//span[contains(@class, "icon-retweet")]]') or '0').replace(',', '')),
