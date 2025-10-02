@@ -8,7 +8,7 @@ load_dotenv()
 
 GEMINI_API_KEY= os.environ.get("GEMINI_API_KEY")
 
-def labeling_cluster(keywords_by_topic: List[str]) -> List[str]:
+def labeling_cluster(keywords_by_topic: List[List[str]]) -> List[List[str]]:
     """
     Uses the Gemini API to generate a descriptive, max-two-word label for each topic cluster.
 
