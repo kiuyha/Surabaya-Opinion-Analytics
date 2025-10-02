@@ -122,7 +122,7 @@ def find_top_k_candidates(vectors: np.ndarray, min_k: int = 2, max_k: int = 15, 
     log.info(f"Top candidates for K: {list(final_candidates_dict.keys())}")
     return final_candidates_dict
 
-def get_keywoards_from_kmeans(kmeans_model: np.ndarray, text_pipeline: Pipeline, num_topics: int) -> Dict[int, List[str]]:
+def get_keywoards_from_kmeans(kmeans_model: np.ndarray, text_pipeline: Pipeline, num_topics: int) -> List[List[str]]:
     # Get the actual terms (words) from the lsa_pipeline
     log.info(f"Extracting top keywords for the {num_topics} discovered topics...")
     terms = text_pipeline.named_steps['tfidfvectorizer'].get_feature_names_out()
@@ -134,10 +134,11 @@ def get_keywoards_from_kmeans(kmeans_model: np.ndarray, text_pipeline: Pipeline,
     original_space_centroids = kmeans_model.cluster_centers_.dot(svd_components)
     order_centroids = original_space_centroids.argsort()[:, ::-1]
 
-    keywords_by_topic = {}
+    keywords_by_topic = []
     for i in range(num_topics):
+        # Extract top 20 terms for topic i
         top_terms = [terms[ind] for ind in order_centroids[i, :20]]
-        keywords_by_topic[i] = top_terms
+        keywords_by_topic.append(top_terms)
         log.info(f"Topic #{i}: {', '.join(top_terms)}")
     
     return keywords_by_topic
@@ -148,7 +149,7 @@ def find_and_train_optimal_model(
         original_texts: List[str],
         min_k: int = 2,
         max_k: int = 15
-    ) -> Tuple[KMeans, Dict[int, List[str]]]: 
+    ) -> Tuple[KMeans, List[str]]: 
     """
     Finds the optimal K using final score: (coherence score, silhouette score, jaccard similarity) and then trains the optimal K-Means model.
     """
@@ -166,7 +167,7 @@ def find_and_train_optimal_model(
             'k': k,
             'model': candidate['model'],
             'final_score': final_score,
-            'keywords': keywords
+            'keywords': keywords[0]
         })
         log.info(f"Final score for K={k}: {final_score:.4f}")
 
@@ -176,7 +177,7 @@ def find_and_train_optimal_model(
     log.info(f"Best result for K={best_result['k']}: {best_result['final_score']:.4f}")
     return best_result['model'], best_result['keywords']
 
-def save_to_supabase(keywords_by_topic: Dict[int, List[str]])-> List[Dict[str, Any]]:
+def save_to_supabase(keywords_by_topic: List[str])-> List[Dict[str, Any]]:
     """Saves the topic labels and keywords to the 'topics' table in Supabase."""
     log.info("updating topic labels and keywords to Supabase...")
 
@@ -187,10 +188,10 @@ def save_to_supabase(keywords_by_topic: Dict[int, List[str]])-> List[Dict[str, A
         cluster_labels = labeling_cluster(keywords_by_topic)
         data_to_insert = [
             {
-                "keywords": keywords_by_topic[index],
-                "label": cluster_labels[index]
+                "keywords": keywords,
+                "label": cluster_label
             } 
-            for index in keywords_by_topic.keys()
+            for keywords, cluster_label in zip(keywords_by_topic, cluster_labels)
         ]
 
         if data_to_insert:

@@ -1,5 +1,5 @@
 from src.core import log
-from typing import Dict, List
+from typing import List
 import requests
 from dotenv import load_dotenv
 import os
@@ -8,30 +8,30 @@ load_dotenv()
 
 GEMINI_API_KEY= os.environ.get("GEMINI_API_KEY")
 
-def labeling_cluster(keywords_by_topic: Dict[int, List[str]]) -> Dict[int, str]:
+def labeling_cluster(keywords_by_topic: List[str]) -> List[str]:
     """
     Uses the Gemini API to generate a descriptive, max-two-word label for each topic cluster.
 
     Args:
-        keywords_by_topic (Dict[int, List[str]]): A dictionary mapping a cluster ID to its list of keywords.
+        keywords_by_topic (List[str]): A dictionary mapping a cluster ID to its list of keywords.
 
     Returns:
-        Dict[int, str]: A dictionary mapping each cluster ID to its generated label.
+        List[str]: A dictionary mapping each cluster ID to its generated label.
     """
     if not GEMINI_API_KEY:
         log.error("GEMINI_API_KEY environment variable not set. Cannot generate labels.")
         # Return a default label for each topic
         return {
             cluster_id: ", ".join(keywords)
-            for cluster_id, keywords in keywords_by_topic.values()
+            for cluster_id, keywords in enumerate(keywords_by_topic)
         }
 
     api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={GEMINI_API_KEY}"
-    topic_labels = {}
+    topic_labels = []
 
     log.info(f"Generating labels for {len(keywords_by_topic)} topics using Gemini...")
 
-    for cluster_id, keywords in keywords_by_topic.items():
+    for cluster_id, keywords in enumerate(keywords_by_topic):
         # Join the list of keywords into a single comma-separated string
         keyword_string = ", ".join(keywords)
 
@@ -60,14 +60,14 @@ def labeling_cluster(keywords_by_topic: Dict[int, List[str]]) -> Dict[int, str]:
             # Clean up the label (remove newlines, quotes, etc.)
             cleaned_label = label.strip().replace('"', '').replace("'", "")
             
-            topic_labels[cluster_id] = cleaned_label
+            topic_labels.append(cleaned_label)
             log.info(f"Generated label for Topic #{cluster_id}: '{cleaned_label}'")
 
         except requests.exceptions.RequestException as e:
             log.error(f"API request failed for cluster {cluster_id}: {e}")
-            topic_labels[cluster_id] = keyword_string
+            topic_labels.append(keyword_string)
         except (KeyError, IndexError) as e:
             log.error(f"Could not parse Gemini response for cluster {cluster_id}: {e}")
-            topic_labels[cluster_id] = keyword_string
+            topic_labels.append(keyword_string)
 
     return topic_labels
