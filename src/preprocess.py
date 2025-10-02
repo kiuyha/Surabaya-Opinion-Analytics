@@ -50,7 +50,7 @@ def lemmatization(text: str, level: str = 'hard')-> str:
         text = " ".join(english_lemmatized_words)
 
         # Stem Indonesian words
-        text = indonesian_stemmer.stem(text)
+        text = indonesian_stemmer.stem_kalimat(text)
 
     return text
 
@@ -96,6 +96,9 @@ def processing_text(text: str, level: str = 'hard') -> str:
     text = demoji.replace_with_desc(text, ' ')
 
     if level == 'hard':
+        # Make the text lower case
+        text = text.lower()
+
         # Remove all punctuation
         text = text.translate(str.maketrans('', '', string.punctuation.replace('@', '')))
 
@@ -103,20 +106,17 @@ def processing_text(text: str, level: str = 'hard') -> str:
         mention_pattern = re.compile(r'@\w+')
         text = mention_pattern.sub(':user', text)
 
-        # Make the text lower case
-        text = text.lower()
-
         # Expand word repetitions (e.g., 'anak2' -> 'anak-anak')
         text = re.sub(r'(\w+?)2', r'\1-\1', text)
+
+        # Perform lemmatization to get the root form of words
+        text = lemmatization(text, level=level)
 
         # Remove stopwords for both Indonesian and English
         stop_words_id = set(stopwords.words('indonesian'))
         stop_words_en = set(stopwords.words('english'))
         all_stopwords = stop_words_id.union(stop_words_en)
         text = " ".join([word for word in text.split() if word not in all_stopwords])
-
-        # Perform lemmatization to get the root form of words
-        text = lemmatization(text, level=level)
 
     elif level == 'light':
         # Remove the '@' symbol from mentions but keep the name, as it's an entity (e.g., '@prabowo' -> 'prabowo')

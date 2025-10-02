@@ -1,4 +1,6 @@
-import joblib
+from itertools import combinations
+from gensim.models.coherencemodel import CoherenceModel
+from gensim.corpora.dictionary import Dictionary
 from sklearn.cluster import KMeans
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.decomposition import TruncatedSVD
@@ -9,10 +11,11 @@ from src.utils.gemini_api import labeling_cluster
 from src.utils.hugging_face import get_hf_token, HF_REPO_KMEANS_ID
 from src.preprocess import processing_text
 from typing import Tuple, Dict, List, Any
+from huggingface_hub import HfApi
 import polars as pl
 import numpy as np
 import os
-from huggingface_hub import HfApi
+import joblib
 
 def text_pipeline(texts: pl.Series, n_components: int) -> Tuple[Pipeline, np.ndarray]:
     """
@@ -35,38 +38,91 @@ def text_pipeline(texts: pl.Series, n_components: int) -> Tuple[Pipeline, np.nda
 
     return lsa_pipeline, vectors_reduced
 
-def find_optimal_k(vectors: np.ndarray, min_k: int = 2, max_k: int = 15) -> int:
+def calculate_coherence_score(top_keywords_by_topic: List[List[str]], original_texts: List[str]) -> float:
     """
-    Finds the optimal k using the Silhouette Score instead of the elbow method, which is better for overlapping data.
+    Calculates the C_v coherence score for a set of topics.
+    Measure how similar the original text is to the topics according to the keywords.
+    Args:
+        top_keywords_by_topic: A list of lists, where each inner list contains the top keywords for a topic.
+        original_texts: The original list of tweet text strings, used to build the model.
     """
-    log.info("Finding optimal K using Silhouette Score...")
-    k_range = range(min_k, max_k + 1)
-    silhouette_scores = []
+    if not original_texts:
+        return 0.0
+    
+    tokenized_docs = [doc.split() for doc in original_texts]
+    dictionary = Dictionary(tokenized_docs)
+    coherence_model = CoherenceModel(
+        topics=top_keywords_by_topic,
+        texts=tokenized_docs,
+        dictionary=dictionary,
+        coherence='c_v'
+    )
+    return coherence_model.get_coherence()
 
+def calculate_separation_score(top_keywords_by_topic: List[List[str]]) -> float:
+    """
+    Calculates the average Jaccard similarity: (size of intersection) / (size of union).
+    In the nutshell, this measures how much plagiarism there is between topics.
+    A lower score means better topic separation.
+    """
+    if len(top_keywords_by_topic) <= 1:
+        return 0.0
+
+    similarity_scores = []
+    for topic1_words, topic2_words in combinations(top_keywords_by_topic, 2):
+        set1 = set(topic1_words)
+        set2 = set(topic2_words)
+        
+        intersection = len(set1.intersection(set2))
+        union = len(set1.union(set2))
+        
+        if union == 0:
+            similarity = 0.0
+        else:
+            similarity = intersection / union
+            
+        similarity_scores.append(similarity)
+    return np.mean(similarity_scores)
+
+def find_top_k_candidates(vectors: np.ndarray, min_k: int = 2, max_k: int = 15, num_candidates: int = 3) -> Dict[int, float, KMeans]:
+    """
+    Finds the top N candidate K values using the Silhouette Score and returns a dictionary containing the trained model and score for each candidate.
+    """
+    log.info(f"Finding top {num_candidates} candidate K values using Silhouette Score...")
+    k_range = range(min_k, max_k + 1)
+    
+    all_results = []
     for k in k_range:
         kmeans = KMeans(n_clusters=k, random_state=42, n_init='auto')
-        labels = kmeans.fit_predict(vectors)
-        score = silhouette_score(vectors, labels)
-        silhouette_scores.append(score)
+        kmeans.fit(vectors)
+        score = silhouette_score(vectors, kmeans.labels_)
+        
+        all_results.append({
+            'k': k,
+            'silhouette_score': score,
+            'model': kmeans 
+        })
         log.info(f"Silhouette Score for K={k}: {score:.4f}")
 
-    # Find the k with the highest silhouette score
-    if silhouette_scores:
-        optimal_k = k_range[np.argmax(silhouette_scores)]
-        log.info(f"Optimal K found via Silhouette Score: {optimal_k}")
-    else:
-        log.warning("Could not calculate silhouette scores. Falling back to K=5.")
-        optimal_k = 5
+    if not all_results:
+        log.warning("Could not calculate any silhouette scores.")
+        return {}
 
-    return optimal_k
+    sorted_results = sorted(all_results, key=lambda x: x['score'], reverse=True)
+    top_n_candidates = sorted_results[:num_candidates]
+    
+    final_candidates_dict = {
+        candidate['k']: {
+            'silhouette_score': candidate['silhouette_score'],
+            'model': candidate['model']
+        }
+        for candidate in top_n_candidates
+    }
+    
+    log.info(f"Top candidates for K: {list(final_candidates_dict.keys())}")
+    return final_candidates_dict
 
-def train_cluster_model(vectors: np.ndarray, text_pipeline: Pipeline, num_topics: int) -> Tuple[KMeans, Dict[int, List[str]]]:
-    """Trains K-Means and extracts top keywords for each topic."""
-    log.info(f"Fitting K-Means with K={num_topics}...")
-    kmeans_model = KMeans(n_clusters=num_topics, random_state=42, n_init='auto')
-    kmeans_model.fit(vectors)
-    log.info("K-Means fitting complete.")
-
+def get_keywoards_from_kmeans(kmeans_model: np.ndarray, text_pipeline: Pipeline, num_topics: int) -> Dict[int, List[str]]:
     # Get the actual terms (words) from the lsa_pipeline
     log.info(f"Extracting top keywords for the {num_topics} discovered topics...")
     terms = text_pipeline.named_steps['tfidfvectorizer'].get_feature_names_out()
@@ -84,7 +140,41 @@ def train_cluster_model(vectors: np.ndarray, text_pipeline: Pipeline, num_topics
         keywords_by_topic[i] = top_terms
         log.info(f"Topic #{i}: {', '.join(top_terms)}")
     
-    return kmeans_model, keywords_by_topic
+    return keywords_by_topic
+
+def find_and_train_optimal_model(
+        vectors: np.ndarray,
+        text_pipeline: Pipeline,
+        original_texts: List[str],
+        min_k: int = 2,
+        max_k: int = 15
+    ) -> Tuple[KMeans, Dict[int, List[str]]]: 
+    """
+    Finds the optimal K using final score: (coherence score, silhouette score, jaccard similarity) and then trains the optimal K-Means model.
+    """
+    top_candidates = find_top_k_candidates(vectors, min_k, max_k)
+
+    all_results = []
+    for k, candidate in top_candidates.items():
+        log.info(f"Check final score for K={k}...")
+        keywords = get_keywoards_from_kmeans(candidate['model'], text_pipeline, k)
+        coherence_score = calculate_coherence_score(keywords, original_texts)
+        separation_score = calculate_separation_score(keywords)
+        final_score = (coherence_score * 0.5) + (candidate['silhouette_score'] * 0.3) + (( 1 - separation_score) * 0.2)
+        
+        all_results.append({
+            'k': k,
+            'model': candidate['model'],
+            'final_score': final_score,
+            'keywords': keywords
+        })
+        log.info(f"Final score for K={k}: {final_score:.4f}")
+
+    sorted_results = sorted(all_results, key=lambda x: x['final_score'], reverse=True)
+    best_result = sorted_results[0]
+    
+    log.info(f"Best result for K={best_result['k']}: {best_result['final_score']:.4f}")
+    return best_result['model'], best_result['keywords']
 
 def save_to_supabase(keywords_by_topic: Dict[int, List[str]])-> List[Dict[str, Any]]:
     """Saves the topic labels and keywords to the 'topics' table in Supabase."""
@@ -198,10 +288,8 @@ if __name__ == "__main__":
     lsa_pipeline, vectors = text_pipeline(df['text_content'], n_components=100)
 
     # Find the best K using the silhouette method
-    best_k = find_optimal_k(vectors, min_k=4, max_k=10) # min_k because if it too small the topic become too generic and max_k because if it too large the topic become too specific
-
-    # Fit the K-Means model
-    kmeans_model, keywords = train_cluster_model(vectors, lsa_pipeline ,num_topics=best_k)
+    # min_k because if it too small the topic become too generic and max_k because if it too large the topic become too specific
+    kmeans_model, keywords = find_and_train_optimal_model(vectors, lsa_pipeline, df['text_content'], min_k=4, max_k=10) 
 
     # temporarily add the cluster label to the dataframe
     df = df.with_columns(
