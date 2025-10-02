@@ -108,7 +108,7 @@ def find_top_k_candidates(vectors: np.ndarray, min_k: int = 2, max_k: int = 15, 
         log.warning("Could not calculate any silhouette scores.")
         return {}
 
-    sorted_results = sorted(all_results, key=lambda x: x['score'], reverse=True)
+    sorted_results = sorted(all_results, key=lambda x: x['silhouette_score'], reverse=True)
     top_n_candidates = sorted_results[:num_candidates]
     
     final_candidates_dict = {
