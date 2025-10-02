@@ -149,7 +149,7 @@ def find_and_train_optimal_model(
         original_texts: List[str],
         min_k: int = 2,
         max_k: int = 15
-    ) -> Tuple[KMeans, List[str]]: 
+    ) -> Tuple[KMeans, List[List[str]]]: 
     """
     Finds the optimal K using final score: (coherence score, silhouette score, jaccard similarity) and then trains the optimal K-Means model.
     """
@@ -167,7 +167,7 @@ def find_and_train_optimal_model(
             'k': k,
             'model': candidate['model'],
             'final_score': final_score,
-            'keywords': keywords[0]
+            'keywords': keywords
         })
         log.info(f"Final score for K={k}: {final_score:.4f}")
 
@@ -177,7 +177,7 @@ def find_and_train_optimal_model(
     log.info(f"Best result for K={best_result['k']}: {best_result['final_score']:.4f}")
     return best_result['model'], best_result['keywords']
 
-def save_to_supabase(keywords_by_topic: List[str])-> List[Dict[str, Any]]:
+def save_to_supabase(keywords_by_topic: List[List[str]])-> List[Dict[str, Any]]:
     """Saves the topic labels and keywords to the 'topics' table in Supabase."""
     log.info("updating topic labels and keywords to Supabase...")
 
@@ -290,7 +290,7 @@ if __name__ == "__main__":
 
     # Find the best K using the silhouette method
     # min_k because if it too small the topic become too generic and max_k because if it too large the topic become too specific
-    kmeans_model, keywords = find_and_train_optimal_model(vectors, lsa_pipeline, df['text_content'].to_list(), min_k=4, max_k=10) 
+    kmeans_model, keywords = find_and_train_optimal_model(vectors, lsa_pipeline, df['text_content'].to_list(), min_k=4, max_k=8) 
 
     # temporarily add the cluster label to the dataframe
     df = df.with_columns(
