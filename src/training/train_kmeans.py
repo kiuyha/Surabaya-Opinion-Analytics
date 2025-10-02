@@ -84,7 +84,7 @@ def calculate_separation_score(top_keywords_by_topic: List[List[str]]) -> float:
         similarity_scores.append(similarity)
     return np.mean(similarity_scores)
 
-def find_top_k_candidates(vectors: np.ndarray, min_k: int = 2, max_k: int = 15, num_candidates: int = 3) -> Dict[int, float, KMeans]:
+def find_top_k_candidates(vectors: np.ndarray, min_k: int = 2, max_k: int = 15, num_candidates: int = 3) -> Dict[int, Dict[str, KMeans]]:
     """
     Finds the top N candidate K values using the Silhouette Score and returns a dictionary containing the trained model and score for each candidate.
     """
