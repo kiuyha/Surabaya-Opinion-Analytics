@@ -21,10 +21,10 @@ def labeling_cluster(keywords_by_topic: List[List[str]]) -> List[List[str]]:
     if not GEMINI_API_KEY:
         log.error("GEMINI_API_KEY environment variable not set. Cannot generate labels.")
         # Return a default label for each topic
-        return {
-            cluster_id: ", ".join(keywords)
-            for cluster_id, keywords in enumerate(keywords_by_topic)
-        }
+        return [
+            [", ".join(keywords)]
+            for keywords in keywords_by_topic
+        ]
 
     api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={GEMINI_API_KEY}"
     topic_labels = []

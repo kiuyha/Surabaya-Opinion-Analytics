@@ -55,7 +55,7 @@ def calculate_coherence_score(top_keywords_by_topic: List[List[str]], original_t
         topics=top_keywords_by_topic,
         texts=tokenized_docs,
         dictionary=dictionary,
-        coherence='c_v'
+        coherence='c_v',
     )
     return coherence_model.get_coherence()
 
@@ -82,9 +82,9 @@ def calculate_separation_score(top_keywords_by_topic: List[List[str]]) -> float:
             similarity = intersection / union
             
         similarity_scores.append(similarity)
-    return np.mean(similarity_scores)
+    return float(np.mean(similarity_scores))
 
-def get_keywoards_from_kmeans(kmeans_model: np.ndarray, text_pipeline: Pipeline, num_topics: int) -> List[List[str]]:
+def get_keywoards_from_kmeans(kmeans_model: KMeans, text_pipeline: Pipeline, num_topics: int) -> List[List[str]]:
     # Get the actual terms (words) from the lsa_pipeline
     log.info(f"Extracting top keywords for the {num_topics} discovered topics...")
     terms = text_pipeline.named_steps['tfidfvectorizer'].get_feature_names_out()
@@ -171,6 +171,10 @@ def save_to_supabase(keywords_by_topic: List[List[str]])-> List[Dict[str, Any]]:
 
 def push_models_to_hf(kmeans_model: KMeans, text_pipeline: Pipeline):
     """Saves models locally, then pushes them to the Hugging Face Hub."""
+
+    if not HF_REPO_KMEANS_ID:
+        raise ValueError("Environment variable 'HF_REPO_KMEANS_ID' is not set.")
+    
     log.info(f"Preparing to push models to Hugging Face Hub repo: {HF_REPO_KMEANS_ID}")
     
     # Get token and create API client

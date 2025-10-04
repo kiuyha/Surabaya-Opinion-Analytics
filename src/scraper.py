@@ -7,7 +7,7 @@ from urllib.parse import quote_plus
 from .core import log, supabase
 from typing import Tuple, Optional
 
-def safetly_extract_text(element: html, xpath: str, attribute: Optional[str] = None)-> Optional[str]:
+def safetly_extract_text(element, xpath: str, attribute: Optional[str] = None)-> Optional[str]:
     try:
         if attribute:
             return element.xpath(xpath)[0].attrib.get(attribute).strip()
@@ -16,14 +16,14 @@ def safetly_extract_text(element: html, xpath: str, attribute: Optional[str] = N
     except:
         return None
 
-def exctract_id_tweet(tweet: html)-> Optional[str]:
+def exctract_id_tweet(tweet)-> Optional[str]:
     tweet_link = safetly_extract_text(tweet, './/a[contains(@class, "tweet-link")]', attribute='href')
     if not tweet_link:
         return None
     tweet_id = tweet_link.split('/')[-1].split('#')[0]
     return tweet_id
 
-def get_posted_at(tweet: html)-> Optional[datetime]:
+def get_posted_at(tweet)-> Optional[datetime]:
     time_string = safetly_extract_text(tweet, './/span[contains(@class,"tweet-date")]/a', attribute='title')
     if not time_string:
         return None

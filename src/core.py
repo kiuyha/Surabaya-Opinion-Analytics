@@ -14,9 +14,12 @@ basicConfig(
 log: Logger = getLogger(__name__)
 
 # Initialize Supabase
-url: str = os.environ.get("SUPABASE_URL")
-key: str = os.environ.get("SUPABASE_KEY")
-supabase: Client = create_client(url, key)
+url= os.environ.get("SUPABASE_URL")
+key = os.environ.get("SUPABASE_KEY")
+
+if url is None or key is None:
+    raise Exception("Missing Supabase URL or key")
+supabase = create_client(url, key)
 
 # Create the single, shared config instance
 config = Config(supabase_client=supabase)

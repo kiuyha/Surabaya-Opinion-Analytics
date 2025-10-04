@@ -1,6 +1,6 @@
 from supabase import Client
 import logging
-from typing import List, TypedDict, Optional
+from typing import Any, List, TypedDict, Optional
 
 # Not using log from src/config.py because it will make a circular import
 log = logging.getLogger(__name__)
@@ -19,7 +19,7 @@ class Config:
         self._slang_mapping = None
         self._curse_words = None
 
-    def _get_app_config(self, key: str, default_value=None):
+    def _get_app_config(self, key: str, default_value: Any = None):
         """
         Fetches a specific configuration value from the 'app_config' table.
         """
@@ -32,7 +32,6 @@ class Config:
                 # Return the actual value from the 'value' column
                 return response.data['value']
             else:
-                # The key was not found in the database, return the default
                 log.warning(f"App config key '{key}' not found. Using default value.")
                 return default_value
                 
