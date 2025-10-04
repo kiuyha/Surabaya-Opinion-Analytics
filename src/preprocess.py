@@ -34,14 +34,14 @@ def get_tld_list(retry_count: int = 3)-> list:
 
 def split_hashtag(tag: str)-> str:
     tag = tag.lstrip("#")
+    tag = tag.replace("_", " ")
     return re.sub(r'([a-z])([0-9])', r'\1 \2', tag, flags=re.I)
 
 indonesian_stemmer = MPStemmer()
 english_lemmatizer = WordNetLemmatizer()
 def lemmatization(text: str, level: str = 'hard')-> str:
     # Normalize slang words
-    words = text.split()
-    normalized_words = [config.slang_mapping.get(word, word) for word in words]
+    normalized_words = [config.slang_mapping.get(word, word) for word in text.split()]
     text = " ".join(normalized_words)
 
     if level == 'hard':
@@ -51,6 +51,9 @@ def lemmatization(text: str, level: str = 'hard')-> str:
 
         # Stem Indonesian words
         text = indonesian_stemmer.stem_kalimat(text)
+
+        # remove curse words since they not useful for topic modeling
+        text = " ".join([word for word in text.split() if word not in config.curse_words])
 
     return text
 
@@ -92,22 +95,22 @@ def processing_text(text: str, level: str = 'hard') -> str:
         else:
             text = text.replace(tag, "")
 
-    # Replace emoji with its text description (e.g., '😊' -> 'smiling face')
-    text = demoji.replace_with_desc(text, ' ')
-
     if level == 'hard':
         # Make the text lower case
         text = text.lower()
 
-        # Remove all punctuation
-        text = text.translate(str.maketrans('', '', string.punctuation.replace('@', '')))
-
         # Replace mentions with a generic token (e.g., '@prabowo' -> ':user')
-        mention_pattern = re.compile(r'@\w+')
-        text = mention_pattern.sub(':user', text)
+        text = re.sub(r'@\w+', ':user', text)
+
+        # Remove all punctuation
+        punctuation_pattern = f"[{re.escape(string.punctuation)}]"
+        text = re.sub(punctuation_pattern, ' ', text)
 
         # Expand word repetitions (e.g., 'anak2' -> 'anak-anak')
-        text = re.sub(r'(\w+?)2', r'\1-\1', text)
+        text = re.sub(r'\b([a-zA-Z]{2,})2\b', r'\1-\1', text)
+
+        # Replaces characters repeated more than once with a single character. e.g., 'monyettt' -> 'monyet'
+        text = re.sub(r'(\w)\1+', r'\1', text)
 
         # Perform lemmatization to get the root form of words
         text = lemmatization(text, level=level)
@@ -123,6 +126,12 @@ def processing_text(text: str, level: str = 'hard') -> str:
         mention_pattern = re.compile(r'@(\w+)')
         text = mention_pattern.sub(r'\1', text)
         text = lemmatization(text, level=level)
+
+    # Replace emoji with its text description (e.g., '😊' -> 'smiling face')
+    text = demoji.replace_with_desc(text, ' ')
+
+    # remove surabaya since it in the query search
+    text = text.replace("surabaya", "")
 
     # remove extra whitespace created during processing
     text = re.sub(r'\s+', ' ', text).strip()

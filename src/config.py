@@ -17,6 +17,7 @@ class Config:
         self._scrape_config = None
         self._unnecessary_hashtags = None
         self._slang_mapping = None
+        self._curse_words = None
 
     def _get_app_config(self, key: str, default_value=None):
         """
@@ -91,7 +92,7 @@ class Config:
         return self._unnecessary_hashtags
     
     @property
-    def slang_mapping(self) -> set:
+    def slang_mapping(self) -> dict:
         """
         Fetches the slang mapping dictionary for preprocessing from Supabase.
         """
@@ -127,3 +128,23 @@ class Config:
             )
             
         return self._slang_mapping
+    
+    @property
+    def curse_words(self) -> set:
+        """
+        Fetches the curse words for preprocessing from Supabase.
+        """
+        if self._curse_words is None:
+            log.info("Fetching curse words from Supabase...")
+            default_value = [
+                "anjing",
+                "monyet",
+                "anjir",
+                "bjir",
+            ]
+            self._curse_words = set(self._get_app_config(
+                key='curse-words',
+                default_value=default_value
+            ))
+            
+        return self._curse_words

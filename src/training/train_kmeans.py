@@ -16,6 +16,73 @@ import polars as pl
 import numpy as np
 import os
 import joblib
+import matplotlib.pyplot as plt
+
+def analyze_and_plot_lsa_variance(texts: pl.Series, max_components: int = 2000):
+    """
+    Analyzes the cumulative variance captured by a range of LSA components
+    and saves a plot of the results.
+
+    Args:
+        texts (pl.Series): A series of text documents.
+        max_components (int): The maximum number of components to test.
+    """
+    # Step 1: Vectorize the text data using TF-IDF
+    # We set max_features to a value larger than max_components
+    vectorizer = TfidfVectorizer(max_features=2000, ngram_range=(1, 2))
+    vectors = vectorizer.fit_transform(texts.to_numpy())
+    
+    # Ensure max_components is not greater than the number of features
+    if max_components >= vectors.shape[1]:
+        max_components = vectors.shape[1] - 1
+        print(f"Warning: max_components adjusted to {max_components} to be less than the number of features.")
+
+    # Step 2: Perform SVD with the maximum number of components
+    # This single fit allows us to analyze the variance of all components up to max_components
+    svd = TruncatedSVD(n_components=max_components, random_state=42)
+    svd.fit(vectors)
+    
+    # Step 3: Calculate the cumulative explained variance
+    # explained_variance_ratio_ contains the variance captured by each component
+    cumulative_variance = np.cumsum(svd.explained_variance_ratio_)
+    
+    # Step 4: Find the number of components to capture a certain variance (e.g., 95%)
+    # This is useful for finding an "optimal" n_components value
+    try:
+        n_components_95 = np.argmax(cumulative_variance >= 0.95) + 1
+        print(f"Number of components to capture 95% of variance: {n_components_95}")
+    except ValueError:
+        print("Could not determine number of components for 95% variance within the given range.")
+        n_components_95 = None
+
+    # Step 5: Plot the results
+    plt.style.use('seaborn-v0_8-whitegrid')
+    fig, ax = plt.subplots(figsize=(12, 7))
+    
+    # Plot the cumulative variance curve
+    ax.plot(range(1, max_components + 1), cumulative_variance, marker='.', markersize=4, linestyle='-', label='Cumulative Explained Variance')
+    
+    # Add a horizontal line for the 95% threshold
+    ax.axhline(y=0.95, color='red', linestyle='--', label='95% Explained Variance Threshold')
+
+    # Add a vertical line showing the components needed for 95% variance
+    if n_components_95:
+        ax.axvline(x=n_components_95, color='green', linestyle=':', label=f'{n_components_95} components for 95% variance')
+    
+    # Formatting the plot
+    ax.set_title('LSA: Explained Variance vs. Number of Components', fontsize=16)
+    ax.set_xlabel('Number of Components', fontsize=12)
+    ax.set_ylabel('Cumulative Explained Variance Ratio', fontsize=12)
+    ax.set_ylim(0, 1.05)
+    ax.legend(loc='best')
+    
+    # Save the chart to a file
+    file_name = 'lsa_variance_analysis.png'
+    plt.savefig(file_name, dpi=300, bbox_inches='tight')
+    print(f"Chart saved as '{file_name}'")
+    
+    # Display the plot
+    plt.show()
 
 def text_pipeline(texts: pl.Series, n_components: int) -> Tuple[Pipeline, np.ndarray]:
     """
@@ -84,44 +151,6 @@ def calculate_separation_score(top_keywords_by_topic: List[List[str]]) -> float:
         similarity_scores.append(similarity)
     return np.mean(similarity_scores)
 
-def find_top_k_candidates(vectors: np.ndarray, min_k: int = 2, max_k: int = 15, num_candidates: int = 3) -> Dict[int, Dict[str, KMeans]]:
-    """
-    Finds the top N candidate K values using the Silhouette Score and returns a dictionary containing the trained model and score for each candidate.
-    """
-    log.info(f"Finding top {num_candidates} candidate K values using Silhouette Score...")
-    k_range = range(min_k, max_k + 1)
-    
-    all_results = []
-    for k in k_range:
-        kmeans = KMeans(n_clusters=k, random_state=42, n_init='auto')
-        kmeans.fit(vectors)
-        score = silhouette_score(vectors, kmeans.labels_)
-        
-        all_results.append({
-            'k': k,
-            'silhouette_score': score,
-            'model': kmeans 
-        })
-        log.info(f"Silhouette Score for K={k}: {score:.4f}")
-
-    if not all_results:
-        log.warning("Could not calculate any silhouette scores.")
-        return {}
-
-    sorted_results = sorted(all_results, key=lambda x: x['silhouette_score'], reverse=True)
-    top_n_candidates = sorted_results[:num_candidates]
-    
-    final_candidates_dict = {
-        candidate['k']: {
-            'silhouette_score': candidate['silhouette_score'],
-            'model': candidate['model']
-        }
-        for candidate in top_n_candidates
-    }
-    
-    log.info(f"Top candidates for K: {list(final_candidates_dict.keys())}")
-    return final_candidates_dict
-
 def get_keywoards_from_kmeans(kmeans_model: np.ndarray, text_pipeline: Pipeline, num_topics: int) -> List[List[str]]:
     # Get the actual terms (words) from the lsa_pipeline
     log.info(f"Extracting top keywords for the {num_topics} discovered topics...")
@@ -136,8 +165,8 @@ def get_keywoards_from_kmeans(kmeans_model: np.ndarray, text_pipeline: Pipeline,
 
     keywords_by_topic = []
     for i in range(num_topics):
-        # Extract top 20 terms for topic i
-        top_terms = [terms[ind] for ind in order_centroids[i, :20]]
+        # Extract top 50 terms for topic i
+        top_terms = [terms[ind] for ind in order_centroids[i, :50]]
         keywords_by_topic.append(top_terms)
         log.info(f"Topic #{i}: {', '.join(top_terms)}")
     
@@ -153,26 +182,28 @@ def find_and_train_optimal_model(
     """
     Finds the optimal K using final score: (coherence score, silhouette score, jaccard similarity) and then trains the optimal K-Means model.
     """
-    top_candidates = find_top_k_candidates(vectors, min_k, max_k)
 
     all_results = []
-    for k, candidate in top_candidates.items():
-        log.info(f"Check final score for K={k}...")
-        keywords = get_keywoards_from_kmeans(candidate['model'], text_pipeline, k)
+    k_range = range(min_k, max_k + 1)
+    for k in k_range:
+        kmeans = KMeans(n_clusters=k, random_state=42, n_init='auto')
+        kmeans.fit(vectors)
+        sil_score = silhouette_score(vectors, kmeans.labels_)
+        keywords = get_keywoards_from_kmeans(kmeans, text_pipeline, k)
         coherence_score = calculate_coherence_score(keywords, original_texts)
         separation_score = calculate_separation_score(keywords)
-        final_score = (coherence_score * 0.5) + (candidate['silhouette_score'] * 0.3) + (( 1 - separation_score) * 0.2)
-        
+        log.info(f"K={k}: Silhouette Score: {sil_score:.4f}, Coherence Score: {coherence_score:.4f}, Separation Score: {separation_score:.4f}")
+
+        final_score = (coherence_score * 0.3) + (sil_score * 0.2) + (( 1 - separation_score) * 0.5)
         all_results.append({
             'k': k,
-            'model': candidate['model'],
-            'final_score': final_score,
-            'keywords': keywords
+            'model': kmeans,
+            'keywords': keywords,
+            'final_score': final_score
         })
         log.info(f"Final score for K={k}: {final_score:.4f}")
 
-    sorted_results = sorted(all_results, key=lambda x: x['final_score'], reverse=True)
-    best_result = sorted_results[0]
+    best_result = max(all_results, key=lambda x: x['final_score'])
     
     log.info(f"Best result for K={best_result['k']}: {best_result['final_score']:.4f}")
     return best_result['model'], best_result['keywords']
@@ -286,11 +317,11 @@ if __name__ == "__main__":
     )
 
     # Load the vectorized text data
-    lsa_pipeline, vectors = text_pipeline(df['text_content'], n_components=100)
+    lsa_pipeline, vectors = text_pipeline(df['text_content'], n_components=500)
 
     # Find the best K using the silhouette method
     # min_k because if it too small the topic become too generic and max_k because if it too large the topic become too specific
-    kmeans_model, keywords = find_and_train_optimal_model(vectors, lsa_pipeline, df['text_content'].to_list(), min_k=3, max_k=5) 
+    kmeans_model, keywords = find_and_train_optimal_model(vectors, lsa_pipeline, df['text_content'].to_list(), min_k=3, max_k=8) 
 
     # temporarily add the cluster label to the dataframe
     df = df.with_columns(

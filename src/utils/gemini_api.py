@@ -37,7 +37,7 @@ def labeling_cluster(keywords_by_topic: List[List[str]]) -> List[List[str]]:
 
         prompt = (
             "You are an expert topic modeler. Your task is to create a short, descriptive topic label from a list of keywords. "
-            "The label must be a maximum of two words. Do not add any extra explanation or formatting. "
+            "The label must be a maximum of two words. It should use ENGLISH. Do not use other languages. Do not add any extra explanation or formatting. "
             "Here are the keywords from a cluster of Indonesian tweets:\n\n"
             f"Keywords: {keyword_string}\n"
             "Label:"
