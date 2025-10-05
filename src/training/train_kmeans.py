@@ -261,7 +261,7 @@ if __name__ == "__main__":
 
     # Find the best K using the silhouette method
     # min_k because if it too small the topic become too generic and max_k because if it too large the topic become too specific
-    kmeans_model, keywords = find_and_train_optimal_model(vectors, lsa_pipeline, df['text_content'].to_list(), min_k=3, max_k=8) 
+    kmeans_model, keywords = find_and_train_optimal_model(vectors, lsa_pipeline, df['processed_text'].to_list(), min_k=3, max_k=8) 
 
     # temporarily add the cluster label to the dataframe
     df = df.with_columns(
