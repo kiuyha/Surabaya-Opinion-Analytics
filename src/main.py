@@ -2,9 +2,9 @@
 This file only run for daily pipeline to get new tweets. For the monthly retrain, use training/train_kmeans.py
 """
 from datetime import datetime, timezone
-from src.core import config, supabase, log
-from src.scraper import scrap_nitter
-from src.preprocess import processing_text
+from .core import config, supabase, log
+from .scraper import scrap_nitter
+from .preprocess import processing_text
 
 if __name__ == "__main__":
     response = supabase.table('app_config').select('value').eq('key', 'training-in-progress').single().execute()
@@ -24,8 +24,8 @@ if __name__ == "__main__":
         if search.get('query') is not None 
         for tweet_data in scrap_nitter(
             search_query=search['query'],
-            depth=search.get('depth', -1),
-            time_budget=search.get('time_budget', -1)
+            depth=search.get('depth') or -1,
+            time_budget=search.get('time_budget') or -1
         )
     ]
 
