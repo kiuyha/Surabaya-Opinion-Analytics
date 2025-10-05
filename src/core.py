@@ -1,6 +1,6 @@
 from dotenv import load_dotenv
 import os
-from supabase import create_client, Client
+from supabase import create_client
 from logging import basicConfig, INFO, getLogger, Logger
 from .config import Config
 

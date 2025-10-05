@@ -250,11 +250,14 @@ if __name__ == "__main__":
     supabase.table('app_config').update({"value": True}).eq('key', 'training-in-progress').execute()
 
     df = df.with_columns(
-        pl.col('text_content').map_elements(processing_text)
+        pl.col('text_content').map_elements(
+            processing_text,
+            return_dtype=pl.String
+        ).alias('processed_text')
     )
 
     # Load the vectorized text data
-    lsa_pipeline, vectors = text_pipeline(df['text_content'], n_components=500)
+    lsa_pipeline, vectors = text_pipeline(df['processed_text'], n_components=500)
 
     # Find the best K using the silhouette method
     # min_k because if it too small the topic become too generic and max_k because if it too large the topic become too specific
