@@ -1,6 +1,7 @@
 from supabase import Client
 import logging
 from typing import Any, List, TypedDict, Optional
+from .utils.hugging_face import HF_REPO_KMEANS_ID
 
 # Not using log from src/config.py because it will make a circular import
 log = logging.getLogger(__name__)
@@ -192,7 +193,9 @@ from gensim.models import FastText
 from huggingface_hub import hf_hub_download
 
 # Download and load the models
+REPO_ID = {HF_REPO_KMEANS_ID}
 kmeans_path = hf_hub_download(repo_id=REPO_ID, filename="kmeans.joblib")
+hf_hub_download(repo_id=REPO_ID, filename="fasttext.model.wv.vectors_ngrams.npy")
 fasttext_path = hf_hub_download(repo_id=REPO_ID, filename="fasttext.model")
 
 kmeans_model = joblib.load(kmeans_path)

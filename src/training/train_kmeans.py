@@ -209,6 +209,49 @@ def find_and_train_optimal_model(
     
     return best_result['model'], best_result['keywords'], junk_topic_ids
 
+def create_interactive_plot(vectors: np.ndarray):
+    """
+    Creates an interactive plot using Plotly Express.
+    """
+    log.info("Generating interactive scatter plot...")
+    log.info("Reducing vector dimensions with t-SNE for visualization...")
+    tsne = TSNE(
+        n_components=2,
+        perplexity=20,
+        max_iter=1000,    
+        random_state=42
+    )
+    coords_2d = tsne.fit_transform(vectors)
+
+    df_pd = df.to_pandas()
+    df_pd['x'] = coords_2d[:, 0]
+    df_pd['y'] = coords_2d[:, 1]
+
+    log.info("Creating Plotly figure...")
+    fig = px.scatter(
+        df_pd,
+        x='x',
+        y='y',
+        color='cluster_kmeans_label',
+        hover_data=['text_content'],
+        title="Tweet Clusters Visualization",
+        labels={'cluster_kmeans_label': 'Topic Cluster'},
+        color_discrete_map={
+            -1: "lightgrey" 
+        },
+        category_orders={"cluster_kmeans_label": sorted(df_pd['cluster_kmeans_label'].unique())}
+    )
+    
+    fig.for_each_trace(
+        lambda t: t.update(hovertemplate=t.hovertemplate.replace("cluster_kmeans_label=-1", "Topic Cluster=Junk/Noise"))
+    )
+
+    fig.update_layout(legend_title="Clusters", title_x=0.5)
+    
+    output_filename = "tweet_clusters.html"
+    fig.write_html(output_filename)
+    log.info(f"Successfully exported interactive plot to '{output_filename}'")
+
 def save_to_supabase(keywords_by_topic: List[List[str]])-> List[Dict[str, Any]]:
     """Saves the topic labels and keywords to the 'topics' table in Supabase."""
     log.info("updating topic labels and keywords to Supabase...")
@@ -281,49 +324,6 @@ def push_models_to_hf(kmeans_model: KMeans, text_model: gensim.models.FastText):
             log.info("Models successfully pushed to Hugging Face Hub.")
         except Exception as e:
             log.error(f"An error occurred while uploading to Hugging Face: {e}")
-
-def create_interactive_plot(vectors: np.ndarray):
-    """
-    Creates an interactive plot using Plotly Express.
-    """
-    log.info("Generating interactive scatter plot...")
-    log.info("Reducing vector dimensions with t-SNE for visualization...")
-    tsne = TSNE(
-        n_components=2,
-        perplexity=20,
-        max_iter=1000,    
-        random_state=42
-    )
-    coords_2d = tsne.fit_transform(vectors)
-
-    df_pd = df.to_pandas()
-    df_pd['x'] = coords_2d[:, 0]
-    df_pd['y'] = coords_2d[:, 1]
-
-    log.info("Creating Plotly figure...")
-    fig = px.scatter(
-        df_pd,
-        x='x',
-        y='y',
-        color='cluster_kmeans_label',
-        hover_data=['text_content'],
-        title="Tweet Clusters Visualization",
-        labels={'cluster_kmeans_label': 'Topic Cluster'},
-        color_discrete_map={
-            -1: "lightgrey" 
-        },
-        category_orders={"cluster_kmeans_label": sorted(df_pd['cluster_kmeans_label'].unique())}
-    )
-    
-    fig.for_each_trace(
-        lambda t: t.update(hovertemplate=t.hovertemplate.replace("cluster_kmeans_label=-1", "Topic Cluster=Junk/Noise"))
-    )
-
-    fig.update_layout(legend_title="Clusters", title_x=0.5)
-    
-    output_filename = "tweet_clusters.html"
-    fig.write_html(output_filename)
-    log.info(f"Successfully exported interactive plot to '{output_filename}'")
 
 if __name__ == "__main__":    
     # Load the tweets from Supabase
