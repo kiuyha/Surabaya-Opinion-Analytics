@@ -7,7 +7,7 @@ def labeling_cluster(keywords_by_topic: List[List[str]]) -> List[str]:
     Uses the Gemini API to generate a descriptive, max-two-word label for each topic cluster.
 
     Args:
-        keywords_by_topic (List[str]): A dictionary mapping a cluster ID to its list of keywords.
+        keywords_by_topic (List[List[str]): A list of lists, where each inner list contains the keywords for a topic.
 
     Returns:
         List[str]: A dictionary mapping each cluster ID to its generated label.
