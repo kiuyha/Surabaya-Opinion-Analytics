@@ -1,7 +1,7 @@
 from supabase import Client
 import logging
-from typing import Any, List, TypedDict, Optional
-from .utils.hugging_face import HF_REPO_KMEANS_ID
+from typing import Any, List, TypedDict, Optional, Mapping
+from huggingface_hub import HfFolder
 
 # Not using log from src/config.py because it will make a circular import
 log = logging.getLogger(__name__)
@@ -13,8 +13,10 @@ class SearchConfigDict(TypedDict):
     time_budget: Optional[int]
 
 class Config:
-    def __init__(self, supabase_client: Client) -> None:
+    def __init__(self, supabase_client: Client, env: Mapping[str, str]) -> None:
         self.supabase = supabase_client
+        self.env = env
+        self._hf_token = None
         self._scrape_config = None
         self._unnecessary_hashtags = None
         self._slang_mapping = None
@@ -149,6 +151,33 @@ class Config:
             ))
             
         return self._curse_words
+    
+    @property
+    def hf_token(self) -> str:
+        """
+        Gets the Hugging Face token from an environment variable (for Actions)
+        or the local folder (for development).
+        """
+        if self._hf_token is None:
+            # Prioritize the environment variable for CI/CD environments
+            token = self.env.get("HF_TOKEN")
+            if token:
+                log.info("Found Hugging Face token in environment variable.")
+                return token
+            
+            # Fallback to local token for development
+            log.info("No HF_TOKEN env var found, checking local hf folder.")
+            try:
+                token = HfFolder.get_token()
+                if token:
+                    log.info("Found Hugging Face token in local folder.")
+                    return token
+            except Exception:
+                pass # Ignore errors if folder doesn't exist
+            
+            raise ValueError("Hugging Face token not found. Please set the HF_TOKEN environment variable or run `huggingface-cli login`.")
+        
+        return self._hf_token
 
     @property
     def readme_train_kmeans(self) -> str:
@@ -193,7 +222,7 @@ from gensim.models import FastText
 from huggingface_hub import hf_hub_download
 
 # Download and load the models
-REPO_ID = {HF_REPO_KMEANS_ID}
+REPO_ID = {self.env.get("HF_REPO_KMEANS_ID")}
 kmeans_path = hf_hub_download(repo_id=REPO_ID, filename="kmeans.joblib")
 hf_hub_download(repo_id=REPO_ID, filename="fasttext.model.wv.vectors_ngrams.npy")
 fasttext_path = hf_hub_download(repo_id=REPO_ID, filename="fasttext.model")

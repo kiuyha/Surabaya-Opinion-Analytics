@@ -22,4 +22,4 @@ if url is None or key is None:
 supabase = create_client(url, key)
 
 # Create the single, shared config instance
-config = Config(supabase_client=supabase)
+config = Config(supabase_client=supabase, env=os.environ)

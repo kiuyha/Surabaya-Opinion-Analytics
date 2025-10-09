@@ -6,7 +6,6 @@ from sklearn.preprocessing import normalize
 from sklearn.metrics import silhouette_score
 from src.core import log, supabase, config
 from src.utils.gemini_api import labeling_cluster
-from src.utils.hugging_face import get_hf_token, HF_REPO_KMEANS_ID
 from src.preprocess import processing_text
 from typing import Tuple, Dict, List, Any
 from huggingface_hub import HfApi
@@ -282,6 +281,7 @@ def save_to_supabase(keywords_by_topic: List[List[str]])-> List[Dict[str, Any]]:
 
 def push_models_to_hf(kmeans_model: KMeans, text_model: gensim.models.FastText):
     """Saves models locally, then pushes them to the Hugging Face Hub."""
+    HF_REPO_KMEANS_ID = config.env.get("HF_REPO_KMEANS_ID")
 
     if not HF_REPO_KMEANS_ID:
         raise ValueError("Environment variable 'HF_REPO_KMEANS_ID' is not set.")
@@ -289,7 +289,7 @@ def push_models_to_hf(kmeans_model: KMeans, text_model: gensim.models.FastText):
     log.info(f"Preparing to push models to Hugging Face Hub repo: {HF_REPO_KMEANS_ID}")
     
     # Get token and create API client
-    token = get_hf_token()
+    token = config.hf_token
     api = HfApi()
 
     # Create the repo if it doesn't exist

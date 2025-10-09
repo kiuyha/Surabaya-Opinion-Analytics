@@ -1,12 +1,6 @@
-from src.core import log
+from src.core import log, config
 from typing import List
 import requests
-from dotenv import load_dotenv
-import os
-
-load_dotenv()
-
-GEMINI_API_KEY= os.environ.get("GEMINI_API_KEY")
 
 def labeling_cluster(keywords_by_topic: List[List[str]]) -> List[List[str]]:
     """
@@ -18,6 +12,8 @@ def labeling_cluster(keywords_by_topic: List[List[str]]) -> List[List[str]]:
     Returns:
         List[str]: A dictionary mapping each cluster ID to its generated label.
     """
+    GEMINI_API_KEY = config.env.get("GEMINI_API_KEY")
+
     if not GEMINI_API_KEY:
         log.error("GEMINI_API_KEY environment variable not set. Cannot generate labels.")
         # Return a default label for each topic
