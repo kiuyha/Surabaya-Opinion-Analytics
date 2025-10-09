@@ -395,7 +395,6 @@ if __name__ == "__main__":
         )
 
     create_interactive_plot(vectors)
-    exit()
 
     # Save the discovered topic labels and keywords to your database
     clean_keywords = [
