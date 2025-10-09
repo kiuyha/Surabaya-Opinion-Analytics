@@ -208,4 +208,5 @@ __marimo__/
 
 data
 test*
-*.png
+/*.png
+/*.html

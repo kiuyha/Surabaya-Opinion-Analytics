@@ -121,6 +121,9 @@ def processing_text(text: str, level: str = 'hard') -> str:
         all_stopwords = stop_words_id.union(stop_words_en)
         text = " ".join([word for word in text.split() if word not in all_stopwords])
 
+        # Remove word that is actually a number, because it usually noise in topic modeling
+        text = " ".join([word for word in text.split() if not word.isdigit()])
+
     elif level == 'light':
         # Remove the '@' symbol from mentions but keep the name, as it's an entity (e.g., '@prabowo' -> 'prabowo')
         mention_pattern = re.compile(r'@(\w+)')

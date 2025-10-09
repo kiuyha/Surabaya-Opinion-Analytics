@@ -18,6 +18,7 @@ class Config:
         self._unnecessary_hashtags = None
         self._slang_mapping = None
         self._curse_words = None
+        self._readme_train_kmeans = None
 
     def _get_app_config(self, key: str, default_value: Any = None):
         """
@@ -147,3 +148,60 @@ class Config:
             ))
             
         return self._curse_words
+
+    @property
+    def readme_train_kmeans(self) -> str:
+        """
+        Fetches the readme train kmeans model from Supabase.
+        """
+        if self._readme_train_kmeans is None:
+            log.info("Fetching readme train kmeans model from Supabase...")
+
+            self._readme_train_kmeans = str(self._get_app_config(
+                key='readme-train-kmeans',
+                default_value=f"""
+---
+license: mit
+language:
+- id
+tags:
+- topic-modeling
+- kmeans
+- fasttext
+- surabaya
+---
+
+# Topic Models for Surabaya Tweet Analysis
+
+This repository contains a set of models for performing topic modeling on tweets from Surabaya.
+
+## Models Included
+
+This repository contains two key components:
+
+1.  **`fasttext.model`**: A `gensim` FastText model trained on processed tweet text. It is used to generate semantic vector embeddings for documents.
+2.  **`kmeans.joblib`**: A `scikit-learn` K-Means model trained on the vectors produced by the FastText model. It contains the final topic cluster centroids.
+
+## How to Use
+
+Load the models using `gensim`, `joblib`, and `huggingface_hub`.
+
+```python
+import joblib
+from gensim.models import FastText
+from huggingface_hub import hf_hub_download
+
+# Download and load the models
+kmeans_path = hf_hub_download(repo_id=REPO_ID, filename="kmeans.joblib")
+fasttext_path = hf_hub_download(repo_id=REPO_ID, filename="fasttext.model")
+
+kmeans_model = joblib.load(kmeans_path)
+fasttext_model = FastText.load(fasttext_path)
+
+print(f"K-Means model loaded with {{kmeans_model.n_clusters}} clusters.")
+print(f"FastText model loaded with vector size {{fasttext_model.vector_size}}.")
+
+# You can now use these models for inference.
+"""
+            ))
+        return self._readme_train_kmeans
