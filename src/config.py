@@ -222,7 +222,7 @@ from gensim.models import FastText
 from huggingface_hub import hf_hub_download
 
 # Download and load the models
-REPO_ID = {self.env.get("HF_REPO_KMEANS_ID")}
+REPO_ID = "{self.env.get("HF_REPO_KMEANS_ID")}"
 kmeans_path = hf_hub_download(repo_id=REPO_ID, filename="kmeans.joblib")
 hf_hub_download(repo_id=REPO_ID, filename="fasttext.model.wv.vectors_ngrams.npy")
 fasttext_path = hf_hub_download(repo_id=REPO_ID, filename="fasttext.model")

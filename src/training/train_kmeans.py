@@ -18,7 +18,10 @@ import plotly.express as px
 from sklearn.manifold import TSNE
 import gensim.models
 
-def text_pipeline(texts: pl.Series, vector_size: int = 300) -> Tuple[gensim.models.FastText, np.ndarray]:
+def text_pipeline(
+    texts: pl.Series,
+    vector_size: int = 300
+) -> Tuple[gensim.models.FastText, np.ndarray]:
     """
     Converts a series of text documents into a vector representation using FastText
     by averaging word vectors for each document.
@@ -61,7 +64,10 @@ def text_pipeline(texts: pl.Series, vector_size: int = 300) -> Tuple[gensim.mode
 
     return fasttext_model, vectors
 
-def calculate_coherence_score(keywords_per_topic: List[List[str]], original_texts: List[str]) -> Tuple[float, List[float]]:
+def calculate_coherence_score(
+    keywords_per_topic: List[List[str]],
+    original_texts: List[str]
+) -> Tuple[float, List[float]]:
     """
     Calculates the c_v coherence (it like score to define whether the topic and its original text are making sense)
     for each topic and returns the average score and the list of individual scores.
@@ -151,14 +157,14 @@ def get_keywords_from_kmeans(
     return keywords_by_topic
 
 def find_and_train_optimal_model(
-        vectors: np.ndarray,
-        text_model: gensim.models.FastText,
-        original_texts: List[str],
-        min_k: int = 2,
-        max_k: int = 15,
-        abs_coherence_threshold: float = 0.45,  # The absolute quality floor
-        rel_coherence_drop: float = 0.80      # Flag if score is less than 80% of the median
-    ) -> Tuple[KMeans, List[List[str]], List[int]]: 
+    vectors: np.ndarray,
+    text_model: gensim.models.FastText,
+    original_texts: List[str],
+    min_k: int = 2,
+    max_k: int = 15,
+    abs_coherence_threshold: float = 0.45,  # The absolute quality floor
+    rel_coherence_drop: float = 0.80      # Flag if score is less than 80% of the median
+) -> Tuple[KMeans, List[List[str]], List[int]]: 
     """
     Finds the optimal K using final score: (coherence score, silhouette score, jaccard similarity) and then trains the optimal K-Means model.
     """
@@ -208,69 +214,61 @@ def find_and_train_optimal_model(
     
     return best_result['model'], best_result['keywords'], junk_topic_ids
 
-def create_interactive_plot(vectors: np.ndarray):
+def create_interactive_plot(
+    df: pl.DataFrame, 
+    vectors: np.ndarray, 
+    topic_labels: Dict[int, str]
+):
     """
-    Creates an interactive plot using Plotly Express.
+    Creates an interactive plot using human-readable topic labels.
     """
-    log.info("Generating interactive scatter plot...")
-    log.info("Reducing vector dimensions with t-SNE for visualization...")
-    tsne = TSNE(
-        n_components=2,
-        perplexity=20,
-        max_iter=1000,    
-        random_state=42
-    )
+    log.info("Generating interactive scatter plot with named topics...")
+    tsne = TSNE(n_components=2, perplexity=20, max_iter=1000, random_state=42)
     coords_2d = tsne.fit_transform(vectors)
 
     df_pd = df.to_pandas()
     df_pd['x'] = coords_2d[:, 0]
     df_pd['y'] = coords_2d[:, 1]
 
+    # Map the numeric labels to the generated names, labeling -1 as Junk/Noise
+    df_pd['topic_name'] = df_pd['cluster_kmeans_label'].map(topic_labels).fillna('Junk/Noise')
+
     log.info("Creating Plotly figure...")
     fig = px.scatter(
         df_pd,
         x='x',
         y='y',
-        color='cluster_kmeans_label',
+        color='topic_name',  # Use the new name column for color
         hover_data=['text_content'],
-        title="Tweet Clusters Visualization",
-        labels={'cluster_kmeans_label': 'Topic Cluster'},
-        color_discrete_map={
-            -1: "lightgrey" 
-        },
-        category_orders={"cluster_kmeans_label": sorted(df_pd['cluster_kmeans_label'].unique())}
+        title="Tweet Clusters Visualization - Surabaya Topics",
+        labels={'topic_name': 'Topic'},
+        color_discrete_map={'Junk/Noise': "lightgrey"}
     )
     
-    fig.for_each_trace(
-        lambda t: t.update(hovertemplate=t.hovertemplate.replace("cluster_kmeans_label=-1", "Topic Cluster=Junk/Noise"))
-    )
-
-    fig.update_layout(legend_title="Clusters", title_x=0.5)
+    fig.update_layout(legend_title="Topics", title_x=0.5)
     
-    output_filename = "tweet_clusters.html"
+    output_filename = "tweet_clusters_named.html"
     fig.write_html(output_filename)
     log.info(f"Successfully exported interactive plot to '{output_filename}'")
 
-def save_to_supabase(keywords_by_topic: List[List[str]])-> List[Dict[str, Any]]:
-    """Saves the topic labels and keywords to the 'topics' table in Supabase."""
-    log.info("updating topic labels and keywords to Supabase...")
-
+def save_to_supabase(
+    keywords_by_topic: List[List[str]], 
+    cluster_labels: List[str]
+) -> List[Dict[str, Any]]:
+    """Saves the topic keywords and their generated labels to Supabase."""
+    log.info("Updating topic labels and keywords in Supabase...")
     try:
         log.info("Clearing old topics from the database...")
         supabase.table('topics').delete().gte('id', 0).execute()
 
-        cluster_labels = labeling_cluster(keywords_by_topic)
         data_to_insert = [
-            {
-                "keywords": keywords,
-                "label": cluster_label
-            } 
-            for keywords, cluster_label in zip(keywords_by_topic, cluster_labels)
+            {"keywords": keywords, "label": label}
+            for keywords, label in zip(keywords_by_topic, cluster_labels)
         ]
 
         if data_to_insert:
             response = supabase.table('topics').insert(data_to_insert).execute()
-            log.info(f"Successfully inserted {len(data_to_insert)} topics into Supabase.")
+            log.info(f"Successfully inserted {len(data_to_insert)} topics.")
             return response.data
         else:
             log.warning("No new topics were generated to save.")
@@ -394,37 +392,36 @@ if __name__ == "__main__":
               .alias("cluster_kmeans_label")
         )
 
-    create_interactive_plot(vectors)
-
-    # Save the discovered topic labels and keywords to your database
     clean_keywords = [
         keyword_list for i, keyword_list in enumerate(keywords) 
         if i not in junk_topics_id
     ]
-    newly_created_topics = save_to_supabase(clean_keywords)
+    generated_labels = labeling_cluster(clean_keywords)
 
+    # Create a mapping from the good numeric labels to the generated names for plotting
+    good_kmeans_labels = sorted([i for i in df['cluster_kmeans_label'].unique() if i != -1])
+    topic_labels_map = {label: name for label, name in zip(good_kmeans_labels, generated_labels)}
+    
+    # Create the interactive plot using the generated names
+    create_interactive_plot(df, vectors, topic_labels_map)
+
+    # Save the clean topics and their generated labels to the database
+    newly_created_topics = save_to_supabase(clean_keywords, generated_labels)
+
+    # Update the 'tweets' table with the correct topic IDs
     if newly_created_topics:
-        # Create the mapping from K-Means label to permanent DB ID
-        good_kmeans_labels = sorted([i for i in df['cluster_kmeans_label'].unique() if i != -1])
+        # Create the final mapping from numeric label to permanent database ID
         kmeans_label_to_db_id = {label: topic['id'] for label, topic in zip(good_kmeans_labels, newly_created_topics)}
+        
         df = df.with_columns(
-            pl.col('cluster_kmeans_label').replace(kmeans_label_to_db_id).alias('topic_id')
+            pl.col('cluster_kmeans_label').replace(kmeans_label_to_db_id, default=None).alias('topic_id')
         )
 
-        # set the junk topics (-1) to None, which will become NULL in the database
-        df = df.with_columns(
-            pl.when(pl.col('cluster_kmeans_label') == -1)
-              .then(None)
-              .otherwise(pl.col('topic_id'))
-              .alias('topic_id')
-        )
-
-        log.info("Updating the 'topic_id' in 'tweets' table...")
-
+        log.info("Updating 'topic_id' in 'tweets' table (setting junk topics to NULL)...")
         update_data = df[['id', 'topic_id']].to_dicts()
         supabase.table('tweets').upsert(update_data).execute()
         
-        log.info("Successfully updated tweet-topic.")
+        log.info("Successfully updated tweet topics.")
 
     # Push models to Hugging Face Hub
     push_models_to_hf(kmeans_model, text_model)

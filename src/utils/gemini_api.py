@@ -2,7 +2,7 @@ from src.core import log, config
 from typing import List
 import requests
 
-def labeling_cluster(keywords_by_topic: List[List[str]]) -> List[List[str]]:
+def labeling_cluster(keywords_by_topic: List[List[str]]) -> List[str]:
     """
     Uses the Gemini API to generate a descriptive, max-two-word label for each topic cluster.
 
@@ -18,7 +18,7 @@ def labeling_cluster(keywords_by_topic: List[List[str]]) -> List[List[str]]:
         log.error("GEMINI_API_KEY environment variable not set. Cannot generate labels.")
         # Return a default label for each topic
         return [
-            [", ".join(keywords)]
+            ", ".join(keywords)
             for keywords in keywords_by_topic
         ]
 
