@@ -26,7 +26,6 @@ joblib==1.5.2
 kiwisolver==1.4.9
 Levenshtein==0.27.1
 lxml==6.0.2
-mpstemmer @ git+https://github.com/ariaghora/mpstemmer.git@25a5fd923af163a7eac3a5ec976984156ca8fa8b
 mypy_extensions==1.1.0
 narwhals==2.7.0
 nltk==3.9.1

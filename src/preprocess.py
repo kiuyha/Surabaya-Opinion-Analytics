@@ -5,7 +5,6 @@ import string
 import demoji
 import nltk
 from nltk.corpus import stopwords
-from mpstemmer import MPStemmer
 from nltk.stem import WordNetLemmatizer
 from .core import log, config
 
@@ -37,7 +36,6 @@ def split_hashtag(tag: str)-> str:
     tag = tag.replace("_", " ")
     return re.sub(r'([a-z])([0-9])', r'\1 \2', tag, flags=re.I)
 
-indonesian_stemmer = MPStemmer()
 english_lemmatizer = WordNetLemmatizer()
 def lemmatization(text: str, level: str = 'hard')-> str:
     # Normalize slang words
@@ -48,9 +46,6 @@ def lemmatization(text: str, level: str = 'hard')-> str:
         # Lemmatize English words
         english_lemmatized_words = [english_lemmatizer.lemmatize(word) for word in text.split()]
         text = " ".join(english_lemmatized_words)
-
-        # Stem Indonesian words
-        text = indonesian_stemmer.stem_kalimat(text)
 
         # remove curse words since they not useful for topic modeling
         text = " ".join([word for word in text.split() if word not in config.curse_words])
