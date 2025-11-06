@@ -2,6 +2,7 @@ from itertools import combinations
 from gensim.models.coherencemodel import CoherenceModel
 from gensim.corpora.dictionary import Dictionary
 from sklearn.cluster import KMeans
+from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.preprocessing import normalize
 from sklearn.metrics import silhouette_score
 from src.core import log, supabase, config
@@ -17,6 +18,12 @@ import joblib
 import plotly.express as px
 from sklearn.manifold import TSNE
 import gensim.models
+
+def sentence_vector(doc: str, fastext_model: gensim.models.FastText) -> np.ndarray:
+    vectors = [fastext_model.wv[word] for word in doc if word in fastext_model.wv]
+    if vectors:
+        return np.mean(vectors, axis=0)
+    return np.zeros(fastext_model.vector_size)
 
 def text_pipeline(
     texts: pl.Series,
@@ -43,25 +50,19 @@ def text_pipeline(
         window=5,
         min_count=2,
         workers=cpu_core,
-        seed=42
+        seed=42,
     )
 
     log.info("Creating document vectors by averaging...")
-    document_vectors = []
-    for doc in tokenized_texts:
-        word_vectors = [fasttext_model.wv[word] for word in doc if word in fasttext_model.wv]
-        if word_vectors:
-            document_vectors.append(np.mean(word_vectors, axis=0))
-        else:
-            document_vectors.append(np.zeros(vector_size)) # Use the specified vector_size
-
-    vectors = np.array(document_vectors)
+    document_vectors = [
+        sentence_vector(doc, fasttext_model)
+        for doc in tokenized_texts
+    ]
 
     log.info("Normalizing document vectors...")
-    vectors = normalize(vectors, norm='l2')
+    vectors = normalize(np.array(document_vectors), norm='l2')
     
     log.info(f"FastText pipeline complete. Final matrix shape: {vectors.shape}")
-
     return fasttext_model, vectors
 
 def calculate_coherence_score(
@@ -92,30 +93,43 @@ def calculate_coherence_score(
     
     return average_score, individual_scores
 
-def calculate_separation_score(top_keywords_by_topic: List[List[str]]) -> float:
+def calculate_separation_score(top_keywords_by_topic: List[List[str]], text_model: gensim.models.FastText, method: str = 'cosine') -> float:
     """
-    Calculates the average Jaccard similarity: (size of intersection) / (size of union).
-    In the nutshell, this measures how much plagiarism there is between topics.
-    A lower score means better topic separation.
+    Calculates separation using either cosine or Jaccard distance. In the nutshell cheks for plagiarism
+    
+    - cosine: Measures semantic distinctiveness (recommended for embeddings)
+    - jaccard: Measures word overlap distinctiveness (simpler, faster)
     """
     if len(top_keywords_by_topic) <= 1:
         return 0.0
 
-    similarity_scores = []
+    separation_scores = []
     for topic1_words, topic2_words in combinations(top_keywords_by_topic, 2):
-        set1 = set(topic1_words)
-        set2 = set(topic2_words)
-        
-        intersection = len(set1.intersection(set2))
-        union = len(set1.union(set2))
-        
-        if union == 0:
-            similarity = 0.0
-        else:
-            similarity = intersection / union
+        if method == 'cosine':
+            # Semantic separation
+            topic1_vecs = [text_model.wv[word] for word in topic1_words if word in text_model.wv]
+            topic2_vecs = [text_model.wv[word] for word in topic2_words if word in text_model.wv]
+
+            if len(topic1_vecs) == 0 or len(topic2_vecs) == 0:
+                separation_scores.append(1.0)
+                continue
+                
+            vec1 = np.mean(topic1_vecs, axis=0).reshape(1, -1)
+            vec2 = np.mean(topic2_vecs, axis=0).reshape(1, -1)
+            cosine_sim = cosine_similarity(vec1, vec2)[0][0]
+            separation_scores.append(1 - cosine_sim)
             
-        similarity_scores.append(similarity)
-    return float(np.mean(similarity_scores))
+        elif method == 'jaccard':
+            # Word overlap separation
+            set1, set2 = set(topic1_words), set(topic2_words)
+            intersection = len(set1.intersection(set2))
+            union = len(set1.union(set2))
+            if union > 0:
+                jaccard_sim = intersection / union
+                separation_scores.append(1 - jaccard_sim)
+            else:
+                separation_scores.append(0.0)
+    return float(np.mean(separation_scores))
 
 def get_keywords_from_kmeans(
     kmeans_model: KMeans,
@@ -147,7 +161,7 @@ def get_keywords_from_kmeans(
         # The 'positive' argument takes a list of vectors to find similarities for
         try:
             top_words = fasttext_model.wv.most_similar(positive=[centroid_vector], topn=top_n_keywords)
-            topic_keywords = [word for word, similarity in top_words]
+            topic_keywords = [word for word, _ in top_words]
             keywords_by_topic.append(topic_keywords)
             log.info(f"Topic #{i}: {', '.join(topic_keywords)}")
         except KeyError as e:
@@ -177,10 +191,11 @@ def find_and_train_optimal_model(
         sil_score = silhouette_score(vectors, kmeans.labels_)
         keywords = get_keywords_from_kmeans(kmeans, text_model, k)
         avg_coherence, individual_coherences = calculate_coherence_score(keywords, original_texts)
-        separation_score = calculate_separation_score(keywords)
-        log.info(f"K={k}: Silhouette Score: {sil_score:.4f}, Coherence Score: {avg_coherence:.4f}, Separation Score: {separation_score:.4f}")
+        separation_score = calculate_separation_score(keywords, text_model)
+        normalized_sil_score = (sil_score + 1) / 2
+        log.info(f"K={k}: Normalize Silhouette Score: {normalized_sil_score:.4f}, Coherence Score: {avg_coherence:.4f}, Separation Score: {separation_score:.4f}")
 
-        final_score = (avg_coherence * 0.3) + (sil_score * 0.2) + (( 1 - separation_score) * 0.5)
+        final_score = (avg_coherence * 0.4) + (separation_score * 0.4) + (normalized_sil_score * 0.2)
         all_results.append({
             'k': k,
             'model': kmeans,
@@ -211,7 +226,6 @@ def find_and_train_optimal_model(
         log.info(f"Identified {len(junk_topic_ids)} junk topic(s): {junk_topic_ids}")
     else:
         log.info("All topics are above the quality threshold. No topics will be removed.")
-    
     return best_result['model'], best_result['keywords'], junk_topic_ids
 
 def create_interactive_plot(
@@ -404,7 +418,7 @@ if __name__ == "__main__":
     
     # Create the interactive plot using the generated names
     create_interactive_plot(df, vectors, topic_labels_map)
-
+    
     # Save the clean topics and their generated labels to the database
     newly_created_topics = save_to_supabase(clean_keywords, generated_labels)
 
