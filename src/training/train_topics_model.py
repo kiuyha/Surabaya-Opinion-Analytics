@@ -428,7 +428,7 @@ if __name__ == "__main__":
     
     # Create the interactive plot using the generated names
     create_interactive_plot(df, vectors, topic_labels_map)
-    exit()
+    
     # Save the clean topics and their generated labels to the database
     newly_created_topics = save_to_supabase(clean_keywords, generated_labels)
 
