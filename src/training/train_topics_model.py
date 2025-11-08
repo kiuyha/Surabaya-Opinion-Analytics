@@ -8,7 +8,7 @@ from sklearn.metrics import silhouette_score
 from src.core import log, supabase, config
 from src.utils.gemini_api import labeling_cluster
 from src.preprocess import processing_text
-from typing import Tuple, Dict, List, Any
+from typing import Tuple, Dict, List, Any, cast
 from huggingface_hub import HfApi
 import polars as pl
 import numpy as np
@@ -16,10 +16,10 @@ import os
 import tempfile
 import joblib
 import plotly.express as px
-from sklearn.manifold import TSNE
-import gensim.models
+from gensim.models import FastText
+from umap import UMAP
 
-def sentence_vector(doc: str, fastext_model: gensim.models.FastText) -> np.ndarray:
+def sentence_vector(doc: str, fastext_model: FastText) -> np.ndarray:
     vectors = [fastext_model.wv[word] for word in doc if word in fastext_model.wv]
     if vectors:
         return np.mean(vectors, axis=0)
@@ -27,11 +27,11 @@ def sentence_vector(doc: str, fastext_model: gensim.models.FastText) -> np.ndarr
 
 def text_pipeline(
     texts: pl.Series,
-    vector_size: int = 300
-) -> Tuple[gensim.models.FastText, np.ndarray]:
+    vector_size: int = 300,
+) -> Tuple[FastText, np.ndarray]:
     """
     Converts a series of text documents into a vector representation using FastText
-    by averaging word vectors for each document.
+    by averaging word vectors for each document. Optionally applies UMAP dimensionality reduction.
     """
     log.info("Tokenizing text for FastText...")
     tokenized_texts = [doc.split() for doc in texts.to_list()]
@@ -44,7 +44,7 @@ def text_pipeline(
         cpu_core = 4
 
     log.info(f"Training FastText model with vector_size={vector_size}...")
-    fasttext_model = gensim.models.FastText(
+    fasttext_model = FastText(
         tokenized_texts,
         vector_size=vector_size,
         window=5,
@@ -54,15 +54,17 @@ def text_pipeline(
     )
 
     log.info("Creating document vectors by averaging...")
-    document_vectors = [
+    vectors = [
         sentence_vector(doc, fasttext_model)
         for doc in tokenized_texts
     ]
+    
+    umap_model = None
 
     log.info("Normalizing document vectors...")
-    vectors = normalize(np.array(document_vectors), norm='l2')
-    
-    log.info(f"FastText pipeline complete. Final matrix shape: {vectors.shape}")
+    vectors = normalize(np.array(vectors), norm='l2')
+
+    log.info(f"Final matrix shape: {vectors.shape}")
     return fasttext_model, vectors
 
 def calculate_coherence_score(
@@ -93,7 +95,7 @@ def calculate_coherence_score(
     
     return average_score, individual_scores
 
-def calculate_separation_score(top_keywords_by_topic: List[List[str]], text_model: gensim.models.FastText, method: str = 'cosine') -> float:
+def calculate_separation_score(top_keywords_by_topic: List[List[str]], text_model: FastText, method: str = 'cosine') -> float:
     """
     Calculates separation using either cosine or Jaccard distance. In the nutshell cheks for plagiarism
     
@@ -133,7 +135,7 @@ def calculate_separation_score(top_keywords_by_topic: List[List[str]], text_mode
 
 def get_keywords_from_kmeans(
     kmeans_model: KMeans,
-    fasttext_model: gensim.models.FastText,
+    fasttext_model: FastText,
     num_topics: int,
     top_n_keywords: int = 50
 ) -> List[List[str]]:
@@ -153,32 +155,31 @@ def get_keywords_from_kmeans(
     log.info(f"Extracting top {top_n_keywords} keywords for the {num_topics} discovered topics...")
     keywords_by_topic = []
 
-    for i in range(num_topics):
-        # Get the centroid vector for the current cluster
-        centroid_vector = kmeans_model.cluster_centers_[i]
+    for cluster_id in range(num_topics):
 
-        # Find the top N most similar words in the Word2Vec model's vocabulary
-        # The 'positive' argument takes a list of vectors to find similarities for
+        # Get the centroid vector for the current cluster
+        centroid_vector = kmeans_model.cluster_centers_[cluster_id]
+
         try:
             top_words = fasttext_model.wv.most_similar(positive=[centroid_vector], topn=top_n_keywords)
             topic_keywords = [word for word, _ in top_words]
             keywords_by_topic.append(topic_keywords)
-            log.info(f"Topic #{i}: {', '.join(topic_keywords)}")
+            log.info(f"Topic #{cluster_id}: {', '.join(topic_keywords)}")
         except KeyError as e:
-            log.warning(f"Could not find keywords for Topic #{i}: a word in the model might be missing. Error: {e}")
+            log.warning(f"Could not find keywords for Topic #{cluster_id}: a word in the model might be missing. Error: {e}")
             keywords_by_topic.append([]) # Append empty list for this topic
 
     return keywords_by_topic
 
 def find_and_train_optimal_model(
     vectors: np.ndarray,
-    text_model: gensim.models.FastText,
+    text_model: FastText,
     original_texts: List[str],
     min_k: int = 2,
     max_k: int = 15,
     abs_coherence_threshold: float = 0.45,  # The absolute quality floor
     rel_coherence_drop: float = 0.80      # Flag if score is less than 80% of the median
-) -> Tuple[KMeans, List[List[str]], List[int]]: 
+) -> Tuple[KMeans, List[List[str]], List[float] ,List[int]]: 
     """
     Finds the optimal K using final score: (coherence score, silhouette score, jaccard similarity) and then trains the optimal K-Means model.
     """
@@ -187,18 +188,17 @@ def find_and_train_optimal_model(
     k_range = range(min_k, max_k + 1)
     for k in k_range:
         kmeans = KMeans(n_clusters=k, random_state=42, n_init='auto')
-        kmeans.fit(vectors)
-        sil_score = silhouette_score(vectors, kmeans.labels_)
+        labels = kmeans.fit_predict(vectors)
         keywords = get_keywords_from_kmeans(kmeans, text_model, k)
         avg_coherence, individual_coherences = calculate_coherence_score(keywords, original_texts)
         separation_score = calculate_separation_score(keywords, text_model)
-        normalized_sil_score = (sil_score + 1) / 2
-        log.info(f"K={k}: Normalize Silhouette Score: {normalized_sil_score:.4f}, Coherence Score: {avg_coherence:.4f}, Separation Score: {separation_score:.4f}")
+        log.info(f"K={k}: Coherence Score: {avg_coherence:.4f}, Separation Score: {separation_score:.4f}")
 
-        final_score = (avg_coherence * 0.4) + (separation_score * 0.4) + (normalized_sil_score * 0.2)
+        final_score = (avg_coherence * 0.6) + (separation_score * 0.4)
         all_results.append({
             'k': k,
             'model': kmeans,
+            'labels': labels,
             'keywords': keywords,
             'final_score': final_score,
             'individual_scores': individual_coherences
@@ -226,7 +226,7 @@ def find_and_train_optimal_model(
         log.info(f"Identified {len(junk_topic_ids)} junk topic(s): {junk_topic_ids}")
     else:
         log.info("All topics are above the quality threshold. No topics will be removed.")
-    return best_result['model'], best_result['keywords'], junk_topic_ids
+    return best_result['model'], best_result['keywords'], best_result['labels'], junk_topic_ids
 
 def create_interactive_plot(
     df: pl.DataFrame, 
@@ -237,8 +237,14 @@ def create_interactive_plot(
     Creates an interactive plot using human-readable topic labels.
     """
     log.info("Generating interactive scatter plot with named topics...")
-    tsne = TSNE(n_components=2, perplexity=20, max_iter=1000, random_state=42)
-    coords_2d = tsne.fit_transform(vectors)
+    umap = UMAP(
+        n_components=2,
+        n_neighbors=15,
+        min_dist=0.5,
+        random_state=42,
+        metric='cosine'
+    )
+    coords_2d = cast(np.ndarray, umap.fit_transform(vectors))
 
     df_pd = df.to_pandas()
     df_pd['x'] = coords_2d[:, 0]
@@ -260,6 +266,7 @@ def create_interactive_plot(
     )
     
     fig.update_layout(legend_title="Topics", title_x=0.5)
+    fig.update_traces(marker=dict(opacity=0.6))
     
     output_filename = "tweet_clusters_named.html"
     fig.write_html(output_filename)
@@ -291,7 +298,7 @@ def save_to_supabase(
         log.error(f"Failed to update topics in Supabase: {e}", exc_info=True)
         return []
 
-def push_models_to_hf(kmeans_model: KMeans, text_model: gensim.models.FastText):
+def push_models_to_hf(kmeans_model: KMeans, text_model: FastText):
     """Saves models locally, then pushes them to the Hugging Face Hub."""
     HF_REPO_KMEANS_ID = config.env.get("HF_REPO_KMEANS_ID")
 
@@ -384,17 +391,20 @@ if __name__ == "__main__":
 
     # Find the best K using the silhouette method
     # min_k because if it too small the topic become too generic and max_k because if it too large the topic become too specific
-    kmeans_model, keywords, junk_topics_id = find_and_train_optimal_model(
+    kmeans_model, keywords, labels, junk_topics_id = find_and_train_optimal_model(
         vectors,
         text_model,
         df['processed_text'].to_list(),
         min_k=3,
         max_k=8
-    ) 
+    )
+
+    sil_score = silhouette_score(vectors, labels)
+    log.info(f"Silhouette score for optimal model: {sil_score:.2f}")
 
     # temporarily add the cluster label to the dataframe
     df = df.with_columns(
-        pl.Series(name="cluster_kmeans_label", values=kmeans_model.labels_)
+        pl.Series(name="cluster_kmeans_label", values=labels)
     )
 
     if junk_topics_id:
@@ -418,7 +428,7 @@ if __name__ == "__main__":
     
     # Create the interactive plot using the generated names
     create_interactive_plot(df, vectors, topic_labels_map)
-    
+    exit()
     # Save the clean topics and their generated labels to the database
     newly_created_topics = save_to_supabase(clean_keywords, generated_labels)
 

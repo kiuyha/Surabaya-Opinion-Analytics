@@ -36,16 +36,16 @@ def split_hashtag(tag: str)-> str:
     tag = tag.replace("_", " ")
     return re.sub(r'([a-z])([0-9])', r'\1 \2', tag, flags=re.I)
 
-english_lemmatizer = WordNetLemmatizer()
-def lemmatization(text: str, level: str = 'hard')-> str:
+# english_lemmatizer = WordNetLemmatizer()
+def normalize_text(text: str, level: str = 'hard')-> str:
     # Normalize slang words
     normalized_words = [config.slang_mapping.get(word, word) for word in text.split()]
     text = " ".join(normalized_words)
 
     if level == 'hard':
         # Lemmatize English words
-        english_lemmatized_words = [english_lemmatizer.lemmatize(word) for word in text.split()]
-        text = " ".join(english_lemmatized_words)
+        # english_lemmatized_words = [english_lemmatizer.lemmatize(word) for word in text.split()]
+        # text = " ".join(english_lemmatized_words)
 
         # remove curse words since they not useful for topic modeling
         text = " ".join([word for word in text.split() if word not in config.curse_words])
@@ -94,21 +94,21 @@ def processing_text(text: str, level: str = 'hard') -> str:
         # Make the text lower case
         text = text.lower()
 
-        # Replace mentions with a generic token (e.g., '@prabowo' -> ':user')
-        text = re.sub(r'@\w+', ':user', text)
+        # Replace mentions with a empty string (e.g., '@prabowo' -> '')
+        text = re.sub(r'@\w+', '', text)
 
         # Remove all punctuation
         punctuation_pattern = f"[{re.escape(string.punctuation)}]"
         text = re.sub(punctuation_pattern, ' ', text)
 
         # Expand word repetitions (e.g., 'anak2' -> 'anak-anak')
-        text = re.sub(r'\b([a-zA-Z]{2,})2\b', r'\1-\1', text)
+        text = re.sub(r'\b([a-zA-Z]{2,})2\b', r'\1 \1', text)
 
         # Replaces characters repeated more than once with a single character. e.g., 'monyettt' -> 'monyet'
         text = re.sub(r'(\w)\1+', r'\1', text)
 
         # Perform lemmatization to get the root form of words
-        text = lemmatization(text, level=level)
+        text = normalize_text(text, level=level)
 
         # Remove stopwords for both Indonesian and English
         stop_words_id = set(stopwords.words('indonesian'))
@@ -123,10 +123,10 @@ def processing_text(text: str, level: str = 'hard') -> str:
         # Remove the '@' symbol from mentions but keep the name, as it's an entity (e.g., '@prabowo' -> 'prabowo')
         mention_pattern = re.compile(r'@(\w+)')
         text = mention_pattern.sub(r'\1', text)
-        text = lemmatization(text, level=level)
+        text = normalize_text(text, level=level)
 
-    # Replace emoji with its text description (e.g., '😊' -> 'smiling face')
-    text = demoji.replace_with_desc(text, ' ')
+    # Replace emoji with its text description (e.g., '😊' -> '')
+    text = demoji.replace_with_desc(text, '')
 
     # remove surabaya since it in the query search
     text = text.replace("surabaya", "")
