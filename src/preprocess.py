@@ -8,7 +8,6 @@ from nltk.corpus import stopwords
 from .core import log, config
 
 nltk.download('stopwords')
-nltk.download('wordnet')
 
 def get_tld_list(retry_count: int = 3)-> list:
     """
@@ -120,7 +119,7 @@ def processing_text(text: str, level: str = 'hard') -> str:
         text = normalize_text(text, level=level)
 
     # Replace emoji with its text description (e.g., '😊' -> '')
-    text = demoji.replace_with_desc(text, '')
+    text = demoji.replace(text, '')
 
     # remove surabaya since it in the query search
     text = text.replace("surabaya", "")
