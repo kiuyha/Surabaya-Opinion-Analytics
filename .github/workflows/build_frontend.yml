@@ -19,8 +19,15 @@ jobs:
 
       - name: Push entire repository to Hugging Face Space
         run: |
+          git clone --depth 1 https://Kiuyha:${{ secrets.HF_TOKEN }}@huggingface.co/spaces/Kiuyha/Surabaya-Opinion-Analytics hf-space
+          if [ ! -d "hf-space" ]; then
+            echo "Failed to clone Hugging Face space."
+            exit 1
+          fi
+          cp -rT frontend/ hf-space/
+          cd hf-space
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add frontend
-          git commit -m "Build and deploy to Hugging Face Space"
-          git push https://Kiuyha:${{ secrets.HF_TOKEN }}@huggingface.co/spaces/Kiuyha/Surabaya-Opinion-Analytics
+          git add .
+          git commit -m "Build and deploy to Hugging Face Space" || echo "No changes to commit"
+          git push
