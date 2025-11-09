@@ -2,6 +2,7 @@ from itertools import combinations
 from gensim.models.coherencemodel import CoherenceModel
 from gensim.corpora.dictionary import Dictionary
 from sklearn.cluster import KMeans
+from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.preprocessing import normalize
 from sklearn.metrics import silhouette_score
@@ -10,14 +11,13 @@ from src.utils.gemini_api import labeling_cluster
 from src.preprocess import processing_text
 from typing import Tuple, Dict, List, Any, cast
 from huggingface_hub import HfApi
-import polars as pl
 import numpy as np
 import os
 import tempfile
 import joblib
-import plotly.express as px
 from gensim.models import FastText
-from umap import UMAP
+import pandas as pd
+from src.utils.visualize import create_cluster_plot, create_kmeans_eval_plot
 
 def sentence_vector(doc: str, fastext_model: FastText) -> np.ndarray:
     vectors = [fastext_model.wv[word] for word in doc if word in fastext_model.wv]
@@ -26,12 +26,11 @@ def sentence_vector(doc: str, fastext_model: FastText) -> np.ndarray:
     return np.zeros(fastext_model.vector_size)
 
 def text_pipeline(
-    texts: pl.Series,
+    texts: pd.Series,
     vector_size: int = 300,
 ) -> Tuple[FastText, np.ndarray]:
     """
-    Converts a series of text documents into a vector representation using FastText
-    by averaging word vectors for each document. Optionally applies UMAP dimensionality reduction.
+    Converts a series of text documents into a vector representation using FastText by averaging word vectors for each document.
     """
     log.info("Tokenizing text for FastText...")
     tokenized_texts = [doc.split() for doc in texts.to_list()]
@@ -59,8 +58,6 @@ def text_pipeline(
         for doc in tokenized_texts
     ]
     
-    umap_model = None
-
     log.info("Normalizing document vectors...")
     vectors = normalize(np.array(vectors), norm='l2')
 
@@ -134,42 +131,59 @@ def calculate_separation_score(top_keywords_by_topic: List[List[str]], text_mode
     return float(np.mean(separation_scores))
 
 def get_keywords_from_kmeans(
-    kmeans_model: KMeans,
-    fasttext_model: FastText,
-    num_topics: int,
-    top_n_keywords: int = 50
+    labels: np.ndarray,
+    original_texts: List[str],
+    num_clusters: int,
+    top_n: int = 10
 ) -> List[List[str]]:
     """
-    Extracts keywords for each topic by finding the words in the vocabulary
-    that are most similar to each cluster's centroid vector.
-
-    Args:
-        kmeans_model: The trained scikit-learn KMeans model.
-        word2vec_model: The trained gensim Word2Vec model.
-        num_topics: The number of clusters/topics.
-        top_n_keywords: The number of top keywords to extract for each topic.
-
-    Returns:
-        A list of lists, where each inner list contains the top keywords for a topic.
+    Extracts top keywords for each cluster using TF-IDF. Each cluster's documents are aggregated into one "document" for TF-IDF analysis.
     """
-    log.info(f"Extracting top {top_n_keywords} keywords for the {num_topics} discovered topics...")
-    keywords_by_topic = []
+    log.info(f"Extracting top {top_n} TF-IDF keywords for {num_clusters} clusters...")
+    
+    # Aggregate text for each cluster
+    cluster_texts = [''] * num_clusters
+    for i, text in enumerate(original_texts):
+        cluster_id = labels[i]
+        # Ensure label is valid index
+        if 0 <= cluster_id < num_clusters:
+            cluster_texts[cluster_id] += " " + text
+        else:
+            log.warning(f"Text '{text[:50]}...' has invalid cluster label {cluster_id}")
+    
+    # Check if any cluster has no text
+    if any(not text.strip() for text in cluster_texts):
+        log.warning("Some clusters are empty. TF-IDF may fail or give poor results.")
+        cluster_texts = [
+            text
 
-    for cluster_id in range(num_topics):
+            if text.strip() else "empty_placeholder"
+            for text in cluster_texts
+        ]
 
-        # Get the centroid vector for the current cluster
-        centroid_vector = kmeans_model.cluster_centers_[cluster_id]
-
-        try:
-            top_words = fasttext_model.wv.most_similar(positive=[centroid_vector], topn=top_n_keywords)
-            topic_keywords = [word for word, _ in top_words]
+    try:
+        vectorizer = TfidfVectorizer(max_features=1000)
+        tfidf_matrix = cast(np.ndarray, vectorizer.fit_transform(cluster_texts))
+        feature_names = vectorizer.get_feature_names_out()
+        
+        keywords_by_topic = []
+        for cluster_id in range(num_clusters):
+            # Get the dense vector for the cluster
+            row = np.squeeze(tfidf_matrix[cluster_id].toarray())
+            
+            # Get indices of top N scores
+            top_indices = row.argsort()[-top_n:][::-1]
+            
+            # Get the keywords
+            topic_keywords = [feature_names[i] for i in top_indices if feature_names[i] != "empty_placeholder"]
             keywords_by_topic.append(topic_keywords)
-            log.info(f"Topic #{cluster_id}: {', '.join(topic_keywords)}")
-        except KeyError as e:
-            log.warning(f"Could not find keywords for Topic #{cluster_id}: a word in the model might be missing. Error: {e}")
-            keywords_by_topic.append([]) # Append empty list for this topic
-
-    return keywords_by_topic
+            log.info(f"Topic #{cluster_id}: {topic_keywords[:5]}...")
+        
+        return keywords_by_topic
+        
+    except ValueError as e:
+        log.error(f"TF-IDF failed, likely due to empty vocabulary or empty clusters: {e}")
+        return [[] for _ in range(num_clusters)]
 
 def find_and_train_optimal_model(
     vectors: np.ndarray,
@@ -181,7 +195,7 @@ def find_and_train_optimal_model(
     rel_coherence_drop: float = 0.80      # Flag if score is less than 80% of the median
 ) -> Tuple[KMeans, List[List[str]], List[float] ,List[int]]: 
     """
-    Finds the optimal K using final score: (coherence score, silhouette score, jaccard similarity) and then trains the optimal K-Means model.
+    Finds the optimal K using final score: (coherence score, separation score) and then trains the optimal K-Means model.
     """
 
     all_results = []
@@ -189,8 +203,11 @@ def find_and_train_optimal_model(
     for k in k_range:
         kmeans = KMeans(n_clusters=k, random_state=42, n_init='auto')
         labels = kmeans.fit_predict(vectors)
-        keywords = get_keywords_from_kmeans(kmeans, text_model, k)
-        avg_coherence, individual_coherences = calculate_coherence_score(keywords, original_texts)
+        keywords = get_keywords_from_kmeans(labels, original_texts, k, top_n=50)
+
+        # Only use the first 10 keywords since the rest are likely noise
+        top_10_keywords = [kw[:10] for kw in keywords]
+        avg_coherence, individual_coherences = calculate_coherence_score(top_10_keywords, original_texts)
         separation_score = calculate_separation_score(keywords, text_model)
         log.info(f"K={k}: Coherence Score: {avg_coherence:.4f}, Separation Score: {separation_score:.4f}")
 
@@ -201,12 +218,17 @@ def find_and_train_optimal_model(
             'labels': labels,
             'keywords': keywords,
             'final_score': final_score,
+            'avg_coherence': avg_coherence,
+            'separation_score': separation_score,
             'individual_scores': individual_coherences
         })
         log.info(f"Final score for K={k}: {final_score:.4f}")
 
     best_result = max(all_results, key=lambda x: x['final_score'])
     log.info(f"Best result for K={best_result['k']}: {best_result['final_score']:.4f}")
+    
+    # Export interactive plot for model evaluation
+    create_kmeans_eval_plot(pd.DataFrame(all_results), best_result['k'])
 
     best_individual_scores = best_result['individual_scores']
     median_score = np.median(best_individual_scores)
@@ -228,55 +250,10 @@ def find_and_train_optimal_model(
         log.info("All topics are above the quality threshold. No topics will be removed.")
     return best_result['model'], best_result['keywords'], best_result['labels'], junk_topic_ids
 
-def create_interactive_plot(
-    df: pl.DataFrame, 
-    vectors: np.ndarray, 
-    topic_labels: Dict[int, str]
-):
-    """
-    Creates an interactive plot using human-readable topic labels.
-    """
-    log.info("Generating interactive scatter plot with named topics...")
-    umap = UMAP(
-        n_components=2,
-        n_neighbors=15,
-        min_dist=0.5,
-        random_state=42,
-        metric='cosine'
-    )
-    coords_2d = cast(np.ndarray, umap.fit_transform(vectors))
-
-    df_pd = df.to_pandas()
-    df_pd['x'] = coords_2d[:, 0]
-    df_pd['y'] = coords_2d[:, 1]
-
-    # Map the numeric labels to the generated names, labeling -1 as Junk/Noise
-    df_pd['topic_name'] = df_pd['cluster_kmeans_label'].map(topic_labels).fillna('Junk/Noise')
-
-    log.info("Creating Plotly figure...")
-    fig = px.scatter(
-        df_pd,
-        x='x',
-        y='y',
-        color='topic_name',  # Use the new name column for color
-        hover_data=['text_content'],
-        title="Tweet Clusters Visualization - Surabaya Topics",
-        labels={'topic_name': 'Topic'},
-        color_discrete_map={'Junk/Noise': "lightgrey"}
-    )
-    
-    fig.update_layout(legend_title="Topics", title_x=0.5)
-    fig.update_traces(marker=dict(opacity=0.6))
-    
-    output_filename = "tweet_clusters_named.html"
-    fig.write_html(output_filename)
-    log.info(f"Successfully exported interactive plot to '{output_filename}'")
-
 def save_to_supabase(
     keywords_by_topic: List[List[str]], 
     cluster_labels: List[str]
 ) -> List[Dict[str, Any]]:
-    """Saves the topic keywords and their generated labels to Supabase."""
     log.info("Updating topic labels and keywords in Supabase...")
     try:
         log.info("Clearing old topics from the database...")
@@ -325,7 +302,7 @@ def push_models_to_hf(kmeans_model: KMeans, text_model: FastText):
         joblib.dump(kmeans_model, kmeans_path)
 
         log.info(f"Saving FastText model to {fasttext_path}...")
-        text_model.save(fasttext_path) # <-- Correct, native method for gensim
+        text_model.save(fasttext_path)
 
         # Create a README.md file (Model Card) to document the models
         log.info("Generating README.md (Model Card)...")
@@ -374,17 +351,12 @@ if __name__ == "__main__":
         raise Exception("No tweets found in Supabase")
     
     log.info(f"Loaded {len(all_tweets)} tweets from Supabase.")
-    df = pl.DataFrame(all_tweets)
+    df = pd.DataFrame(all_tweets)
     
     # Mark training in progress
     supabase.table('app_config').update({"value": True}).eq('key', 'training-in-progress').execute()
 
-    df = df.with_columns(
-        pl.col('text_content').map_elements(
-            processing_text,
-            return_dtype=pl.String
-        ).alias('processed_text')
-    )
+    df['processed_text'] = df['text_content'].apply(processing_text)
 
     # Load the vectorized text data
     text_model, vectors = text_pipeline(df['processed_text'])
@@ -403,31 +375,48 @@ if __name__ == "__main__":
     log.info(f"Silhouette score for optimal model: {sil_score:.2f}")
 
     # temporarily add the cluster label to the dataframe
-    df = df.with_columns(
-        pl.Series(name="cluster_kmeans_label", values=labels)
-    )
+    df['cluster_kmeans_label'] = labels
 
     if junk_topics_id:
         log.info(f"Re-labeling junk topics {junk_topics_id} to -1...")
-        df = df.with_columns(
-            pl.when(pl.col("cluster_kmeans_label").is_in(junk_topics_id))
-              .then(-1) # Assign -1 to junk topics
-              .otherwise(pl.col("cluster_kmeans_label")) # Keep the original label for good topics
-              .alias("cluster_kmeans_label")
-        )
+        df['cluster_kmeans_label'] = df['cluster_kmeans_label'].replace(junk_topics_id, -1)
 
     clean_keywords = [
         keyword_list for i, keyword_list in enumerate(keywords) 
         if i not in junk_topics_id
     ]
-    generated_labels = labeling_cluster(clean_keywords)
+
+    USE_GEMINI_API = config.env.get('USE_GEMINI_API', False)
+    if USE_GEMINI_API:
+        # only use 10 top keywords for API
+        keywords_for_api = [
+            keyword_list[:10] for keyword_list in clean_keywords
+        ]
+        generated_labels = labeling_cluster(keywords_for_api)
+    else:
+        log.info("Generating labels from top 10 keywords (no API)...")
+        generated_labels = [
+            ", ".join(keyword[:10])
+            for keyword in clean_keywords
+        ]
+        for i, label in enumerate(generated_labels):
+            log.info(f"Generated label for Topic #{i}: {label}")
 
     # Create a mapping from the good numeric labels to the generated names for plotting
-    good_kmeans_labels = sorted([i for i in df['cluster_kmeans_label'].unique() if i != -1])
-    topic_labels_map = {label: name for label, name in zip(good_kmeans_labels, generated_labels)}
+    good_kmeans_labels = sorted([
+        i 
+        for i in df['cluster_kmeans_label'].unique()
+        if i != -1
+    ])
+    topic_labels_map = {
+        label: name
+        for label, name in zip(good_kmeans_labels, generated_labels)
+    }
     
     # Create the interactive plot using the generated names
-    create_interactive_plot(df, vectors, topic_labels_map)
+    create_cluster_plot(df, vectors, topic_labels_map)
+
+    # exit()
     
     # Save the clean topics and their generated labels to the database
     newly_created_topics = save_to_supabase(clean_keywords, generated_labels)
@@ -435,14 +424,20 @@ if __name__ == "__main__":
     # Update the 'tweets' table with the correct topic IDs
     if newly_created_topics:
         # Create the final mapping from numeric label to permanent database ID
-        kmeans_label_to_db_id = {label: topic['id'] for label, topic in zip(good_kmeans_labels, newly_created_topics)}
+        kmeans_label_to_db_id = {
+            label: topic['id']
+            for label, topic in zip(good_kmeans_labels, newly_created_topics)
+        }
         
-        df = df.with_columns(
-            pl.col('cluster_kmeans_label').replace(kmeans_label_to_db_id, default=None).alias('topic_id')
+        df['topic_id'] = (
+            df['cluster_kmeans_label']
+            .map(kmeans_label_to_db_id)
+            .replace(np.nan, None)
+            .astype('Int64')
         )
 
         log.info("Updating 'topic_id' in 'tweets' table (setting junk topics to NULL)...")
-        update_data = df[['id', 'topic_id']].to_dicts()
+        update_data = df[['id', 'topic_id']].to_dict(orient='records')
         supabase.table('tweets').upsert(update_data).execute()
         
         log.info("Successfully updated tweet topics.")

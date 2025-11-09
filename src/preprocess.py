@@ -5,7 +5,6 @@ import string
 import demoji
 import nltk
 from nltk.corpus import stopwords
-from nltk.stem import WordNetLemmatizer
 from .core import log, config
 
 nltk.download('stopwords')
@@ -36,17 +35,12 @@ def split_hashtag(tag: str)-> str:
     tag = tag.replace("_", " ")
     return re.sub(r'([a-z])([0-9])', r'\1 \2', tag, flags=re.I)
 
-# english_lemmatizer = WordNetLemmatizer()
 def normalize_text(text: str, level: str = 'hard')-> str:
     # Normalize slang words
     normalized_words = [config.slang_mapping.get(word, word) for word in text.split()]
     text = " ".join(normalized_words)
 
     if level == 'hard':
-        # Lemmatize English words
-        # english_lemmatized_words = [english_lemmatizer.lemmatize(word) for word in text.split()]
-        # text = " ".join(english_lemmatized_words)
-
         # remove curse words since they not useful for topic modeling
         text = " ".join([word for word in text.split() if word not in config.curse_words])
 
