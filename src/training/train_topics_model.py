@@ -225,7 +225,7 @@ def find_and_train_optimal_model(
         log.info(f"Final score for K={k}: {final_score:.4f}")
 
     best_result = max(all_results, key=lambda x: x['final_score'])
-    log.info(f"Best result for K={best_result['k']}: {best_result['final_score']:.4f}")
+    log.info(f"Best result for K={best_result['k']}: \n Coherence Score: {best_result['avg_coherence']:.4f}, Separation Score: {best_result['separation_score']:.4f}, Final Score: {best_result['final_score']:.4f}")
     
     # Export interactive plot for model evaluation
     create_kmeans_eval_plot(pd.DataFrame(all_results), best_result['k'])
