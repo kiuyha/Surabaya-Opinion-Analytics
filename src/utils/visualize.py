@@ -13,7 +13,8 @@ os.makedirs(VISUALIZATION_DIR, exist_ok=True)
 def create_cluster_plot(
     df: pd.DataFrame, 
     vectors: np.ndarray, 
-    topic_labels: Dict[int, str]
+    topic_labels: Dict[int, str],
+    save: bool = True
 ):
     log.info("Generating interactive scatter plot with named topics...")
     umap = UMAP(
@@ -30,7 +31,7 @@ def create_cluster_plot(
     df['y'] = coords_2d[:, 1]
 
     # Map the numeric labels to the generated names, labeling -1 as Junk/Noise
-    df['topic_name'] = df['cluster_kmeans_label'].map(topic_labels).fillna('Junk/Noise')
+    df['topic_name'] = df['cluster_label'].map(topic_labels).fillna('Junk/Noise')
 
     log.info("Creating Plotly figure...")
     fig = px.scatter(
@@ -46,10 +47,11 @@ def create_cluster_plot(
     
     fig.update_layout(legend_title="Topics", title_x=0.5)
     fig.update_traces(marker=dict(opacity=0.6))
-
-    output_path = f"{VISUALIZATION_DIR}/tweet_clusters.html"
-    fig.write_html(output_path)
-    log.info(f"Successfully exported interactive plot to '{output_path}'")
+    
+    if save:
+        output_path = f"{VISUALIZATION_DIR}/tweet_clusters.html"
+        fig.write_html(output_path)
+        log.info(f"Successfully exported interactive plot to '{output_path}'")
 
     return fig
 

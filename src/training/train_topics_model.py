@@ -130,60 +130,56 @@ def calculate_separation_score(top_keywords_by_topic: List[List[str]], text_mode
                 separation_scores.append(0.0)
     return float(np.mean(separation_scores))
 
-def get_keywords_from_kmeans(
+def get_keywords_from_labels(
     labels: np.ndarray,
     original_texts: List[str],
-    num_clusters: int,
-    top_n: int = 10
+    top_n: int = 10,
+    ignore_label: int|None = None
 ) -> List[List[str]]:
     """
     Extracts top keywords for each cluster using TF-IDF. Each cluster's documents are aggregated into one "document" for TF-IDF analysis.
     """
-    log.info(f"Extracting top {top_n} TF-IDF keywords for {num_clusters} clusters...")
-    
     # Aggregate text for each cluster
-    cluster_texts = [''] * num_clusters
-    for i, text in enumerate(original_texts):
-        cluster_id = labels[i]
-        # Ensure label is valid index
-        if 0 <= cluster_id < num_clusters:
-            cluster_texts[cluster_id] += " " + text
-        else:
-            log.warning(f"Text '{text[:50]}...' has invalid cluster label {cluster_id}")
+    cluster_texts = {}
     
-    # Check if any cluster has no text
-    if any(not text.strip() for text in cluster_texts):
-        log.warning("Some clusters are empty. TF-IDF may fail or give poor results.")
-        cluster_texts = [
-            text
+    unique_labels = set(labels)
+    if ignore_label is not None and ignore_label in unique_labels:
+        unique_labels.remove(ignore_label)
+        
+    for label in unique_labels:
+        cluster_texts[label] = ""
 
-            if text.strip() else "empty_placeholder"
-            for text in cluster_texts
-        ]
+    for i, text in enumerate(original_texts):
+        label = labels[i]
+        if label == ignore_label:
+            continue
+        cluster_texts[label] += " " + text
+
+    # Sort keys to ensure topic 0 is index 0, topic 1 is index 1, etc.
+    sorted_labels = sorted(cluster_texts.keys())
+    corpus = [cluster_texts[l] for l in sorted_labels]
+    
+    # Handle edge case where all clusters are empty or only noise exists
+    if not corpus:
+        return []
 
     try:
         vectorizer = TfidfVectorizer(max_features=1000)
-        tfidf_matrix = cast(np.ndarray, vectorizer.fit_transform(cluster_texts))
+        tfidf_matrix = cast(np.ndarray, vectorizer.fit_transform(corpus))
         feature_names = vectorizer.get_feature_names_out()
         
         keywords_by_topic = []
-        for cluster_id in range(num_clusters):
-            # Get the dense vector for the cluster
-            row = np.squeeze(tfidf_matrix[cluster_id].toarray())
-            
-            # Get indices of top N scores
+        for i in range(len(sorted_labels)):
+            row = np.squeeze(tfidf_matrix[i].toarray())
             top_indices = row.argsort()[-top_n:][::-1]
-            
-            # Get the keywords
-            topic_keywords = [feature_names[i] for i in top_indices if feature_names[i] != "empty_placeholder"]
+            topic_keywords = [feature_names[j] for j in top_indices]
             keywords_by_topic.append(topic_keywords)
-            log.info(f"Topic #{cluster_id}: {topic_keywords[:5]}...")
         
         return keywords_by_topic
         
     except ValueError as e:
-        log.error(f"TF-IDF failed, likely due to empty vocabulary or empty clusters: {e}")
-        return [[] for _ in range(num_clusters)]
+        log.error(f"TF-IDF failed: {e}")
+        return [[] for _ in range(len(sorted_labels))]
 
 def find_and_train_optimal_model(
     vectors: np.ndarray,
@@ -203,7 +199,7 @@ def find_and_train_optimal_model(
     for k in k_range:
         kmeans = KMeans(n_clusters=k, random_state=42, n_init='auto')
         labels = kmeans.fit_predict(vectors)
-        keywords = get_keywords_from_kmeans(labels, original_texts, k, top_n=50)
+        keywords = get_keywords_from_labels(labels, original_texts, top_n=50, ignore_label=-1)
 
         # Only use the first 10 keywords since the rest are likely noise
         top_10_keywords = [kw[:10] for kw in keywords]
@@ -375,11 +371,11 @@ if __name__ == "__main__":
     log.info(f"Silhouette score for optimal model: {sil_score:.2f}")
 
     # temporarily add the cluster label to the dataframe
-    df['cluster_kmeans_label'] = labels
+    df['cluster_label'] = labels
 
     if junk_topics_id:
         log.info(f"Re-labeling junk topics {junk_topics_id} to -1...")
-        df['cluster_kmeans_label'] = df['cluster_kmeans_label'].replace(junk_topics_id, -1)
+        df['cluster_label'] = df['cluster_label'].replace(junk_topics_id, -1)
 
     clean_keywords = [
         keyword_list for i, keyword_list in enumerate(keywords) 
@@ -405,7 +401,7 @@ if __name__ == "__main__":
     # Create a mapping from the good numeric labels to the generated names for plotting
     good_kmeans_labels = sorted([
         i 
-        for i in df['cluster_kmeans_label'].unique()
+        for i in df['cluster_label'].unique()
         if i != -1
     ])
     topic_labels_map = {
@@ -428,7 +424,7 @@ if __name__ == "__main__":
         }
         
         df['topic_id'] = (
-            df['cluster_kmeans_label']
+            df['cluster_label']
             .map(kmeans_label_to_db_id)
             .replace(np.nan, None)
             .astype('Int64')
