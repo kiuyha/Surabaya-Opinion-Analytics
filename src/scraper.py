@@ -71,6 +71,36 @@ def extract_new_tweets_and_next_link(html_content: str)-> Tuple[list[ScrapedTwee
     else:
         next_link = None
     return new_tweets, next_link
+
+def extract_new_reddit_comment(comments: list)-> list[ScrapedRedditDict]:
+    if not comments:
+        return None
+    
+    base_url = "https://www.reddit.com"
+    scraped_comments: list[ScrapedRedditDict] = [
+        {
+            "id": p.get("id"),
+            "username": p.get("author", ""),
+            "text_content": p.get("title", "") + " " + p.get("selftext", ""),
+            "posted_at": datetime.fromtimestamp(int(p.get("created_utc"))).isoformat(),
+            "upvote_count": p.get("ups"),
+            "downvote_count": p.get("downs"),
+            "permalink": base_url + p.get("permalink", "")
+        }
+        for p in comments
+    ]
+
+    scraped_ids = [comment['id'] for comment in scraped_comments if comment['id']]
+    try:
+        response = supabase.table('reddit_comments').select('id').in_('id', scraped_ids).execute()
+        existing_ids = {item['id'] for item in response.data}
+    except Exception as e:
+        log.error(f"An error occurred while checking Supabase: {e}")
+        existing_ids = set()
+
+    new_comments = [comment for comment in scraped_comments if comment['id'] not in existing_ids]
+    return new_comments
+
         
 def scrap_nitter(search_query: str, depth: int = -1, time_budget: int = -1)-> list[ScrapedTweetDict]:
     """ This function is for scrapping tweets from twitter/X using Nitter
@@ -218,7 +248,6 @@ def scrape_reddit(search_query: str, depth: int = -1, time_budget: int = -1) -> 
 
     scraped_data = []
     last_timestamp = None
-    base_url = "https://www.reddit.com"
     start_time = time.time()
     index = 1
     while True:
@@ -245,31 +274,21 @@ def scrape_reddit(search_query: str, depth: int = -1, time_budget: int = -1) -> 
             response = requests.get("https://api.pullpush.io/reddit/search", params=params, timeout=10)
             response.raise_for_status()
             data = response.json()
-            posts = data.get("data", [])
+            comments = data.get("data", [])
         except Exception as e:
             log.error(f"An error occurred: {e}")
             break
 
-        if not posts:
+        if not comments:
             log.info("No more posts to scrape.")
             break
 
-        log.info(f"Scraped {len(posts)} comments from url: {response.url}.")
-        scraped_data.extend([
-            {
-                "id": p.get("id"),
-                "username": p.get("author", ""),
-                "text_content": p.get("title", "") + " " + p.get("selftext", ""),
-                "posted_at": datetime.fromtimestamp(int(p.get("created_utc"))).isoformat(),
-                "upvote_count": p.get("ups"),
-                "downvote_count": p.get("downs"),
-                "permalink": base_url + p.get("permalink", "")
-            }
-            for p in posts
-        ])
+        new_comments = extract_new_reddit_comment(comments)
+        scraped_data.extend(new_comments)
+        log.info(f"Scraped {len(new_comments)} new comments from url: {response.url}.")
         
         previous_timestamp = last_timestamp
-        last_timestamp = posts[-1].get("created_utc")
+        last_timestamp = comments[-1].get("created_utc")
 
         if last_timestamp == previous_timestamp:
             log.info("No more posts to scrape.")
