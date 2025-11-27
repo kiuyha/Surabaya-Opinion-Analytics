@@ -73,9 +73,6 @@ def extract_new_tweets_and_next_link(html_content: str)-> Tuple[list[ScrapedTwee
     return new_tweets, next_link
 
 def extract_new_reddit_comment(comments: list)-> list[ScrapedRedditDict]:
-    if not comments:
-        return None
-    
     base_url = "https://www.reddit.com"
     scraped_comments: list[ScrapedRedditDict] = [
         {
@@ -284,6 +281,9 @@ def scrape_reddit(search_query: str, depth: int = -1, time_budget: int = -1) -> 
             break
 
         new_comments = extract_new_reddit_comment(comments)
+        if not new_comments:
+            log.info("No more posts to scrape.")
+            break
         scraped_data.extend(new_comments)
         log.info(f"Scraped {len(new_comments)} new comments from url: {response.url}.")
         
