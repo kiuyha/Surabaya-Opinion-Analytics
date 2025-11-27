@@ -4,8 +4,6 @@ import time
 import random
 from datetime import datetime, timezone
 from urllib.parse import quote_plus
-
-from numba.core.typeconv.typeconv import base_url
 import requests
 from .core import log, supabase
 from typing import Tuple, Optional

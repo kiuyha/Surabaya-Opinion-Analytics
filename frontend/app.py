@@ -11,8 +11,7 @@ from src.core import supabase
 load_dotenv()
 st.set_page_config(layout="wide", page_title="Surabaya Opinion Analysis")
 
-@st.cache_data(ttl=600)
-def load_data():
+def fetch_all_data():
     all_data = []
     page_size = 1000
     current_page = 0
@@ -33,6 +32,9 @@ def load_data():
         # Add the fetched tweets to our main list and go to the next page
         all_data.extend(page_of_data)
         current_page += 1
+
+@st.cache_data(ttl=600)
+def load_data():
     
     df = pd.DataFrame(all_data)
     if 'posted_at' in df.columns:
