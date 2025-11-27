@@ -23,20 +23,27 @@ if __name__ == "__main__":
 
     new_tweets = [
         {**tweet, 'source_type': 'twitter'}
-
+        
         for search in config.scrape_config
         if search.get('query')
-        for tweet in scrap_nitter(search['nitter']['query'])
+        for tweet in scrap_nitter(
+            search_query=search['nitter']['query'],
+            depth=search['nitter'].get('depth') or -1,
+            time_budget=search['nitter'].get('time_budget') or -1
+        )
     ]
 
     log.info(f"Found {len(new_tweets)} new tweets.")
     
     new_reddit = [
         {**comment, 'source_type': 'reddit'}
-        
         for search in config.scrape_config
         if search.get('query')
-        for comment in scrape_reddit(search['reddit']['query'])
+        for comment in scrape_reddit(
+            search_query=search['reddit']['query']
+            depth=search['reddit'].get('depth') or -1,
+            time_budget=search['reddit'].get('time_budget') or -1
+        )
     ]
 
     log.info(f"Found {len(new_reddit)} new comments.")
