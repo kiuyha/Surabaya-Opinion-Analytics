@@ -33,7 +33,9 @@ def fetch_all_rows(table_name):
         all_data.extend(page_of_data)
         current_page += 1
 
-@st.cache_data(ttl=600)
+    return all_data
+
+@st.cache_data(ttl=10000)
 def load_data():
     tweets_data = fetch_all_rows('tweets')
     reddit_data = fetch_all_rows('reddit_comments')

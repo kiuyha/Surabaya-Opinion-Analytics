@@ -38,6 +38,58 @@ def show(df: pd.DataFrame):
     # Slice the dataframe to get only the rows we want to show right now
     visible_df = df.iloc[:st.session_state.view_limit]
 
+    st.markdown("""
+    <style>
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        .fullname {
+            font-weight: bold;
+            font-size: 16px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 140px;
+        }
+        .username{
+            font-size: 12px;
+            color: gray;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 140px;
+        }
+        .platform-badge {
+            font-size: 12px;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-weight: 600;
+        }
+        .content-text {
+            font-size: 14px;
+            line-height: 1.4;
+            display: -webkit-box;
+            -webkit-line-clamp: 5; /* Limit to 5 lines */
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            margin-bottom: 10px;
+            color: var(--text-color);
+            opacity: 0.9;
+            flex: ;
+        }
+        .meta-row {
+            display: flex;
+            gap: 10px;
+            font-size: 12px;
+            color: gray;
+            margin-top: auto;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
     # Loop through the VISIBLE dataframe only
     for i in range(0, len(visible_df), N_COLS):
         # Create the layout columns
@@ -49,61 +101,112 @@ def show(df: pd.DataFrame):
         # Iterate through columns and dataframe rows simultaneously
         for col, (_, row) in zip(cols, batch.iterrows()):
             with col:
-                with st.container(border=True, height=250):
-                    fullname = row.get('fullname')
-                    source_type = row.get('source_type')
-                    username = row.get('username', 'Unknown User')
-                    content = row.get('text_content', 'No content')
+                source_type = row.get('source_type', 'unknown')
+                style = get_source_style(source_type)
+                
+                # Container height ensures uniform grid
+                with st.container(border=True, height=280):
+                    username = row.get('username', 'Unknown')
+                    content = row.get('text_content', 'No content available.')
                     sentiment = row.get('sentiment', 'neutral')
                     topic = row.get('topic')
                     
-                    full_topic = f"# {topic}" if topic else ""
-                    display_topic = f"# {topic[:30]}..." if len(topic) > 30 else full_topic
-                    topic_color = "#CED3D8"
-
-                    if sentiment == "positive":
-                        sentiment_color = "#28a745"
-                    elif sentiment == "negative":
-                        sentiment_color = "#dc3545"
-                    else:
-                        sentiment_color = "#c3c3c4"
-
-                    st.html(
-                        f"""
-<div style="margin-bottom: 3px;">
-    <div style="font-weight: bold; font-size: 18px; line-height: 1.2; margin-bottom: 4px;">
-        {username}
-    </div>
-    
-    <div style="font-size: 14px; line-height: 1.2;">
-        <span style="color: {sentiment_color}; font-weight: bold; margin-right: 8px;">
-            {sentiment.title()}
-        </span>
-        
-        <span title="{full_topic}" style="font-weight: bold; color: {topic_color};">
-            {display_topic}
-        </span>
-    </div>
-</div>
-                        """
-                    )
-
-                    st.caption(content)
-
+                    metrics_html = ""
                     if source_type == "tweets":
-                        tweet_url = f"https://twitter.com/{username}/status/{row['id']}"
-                        st.link_button("View on Twitter", tweet_url, width='stretch')
+                        likes = row.get('like_count', 0) or 0
+                        rts = row.get('retweet_count', 0) or 0
+                        quotes = row.get('quote_count', 0) or 0
+                        comments = row.get('comment_count', 0) or 0
+                        metrics_html = f"❤️ {likes} · 🔁 {rts} · 🔁 {quotes} · 🔁 {comments}"
+                        link_url = f"https://twitter.com/{username}/status/{row['id']}"
+                        link_label = "Open Twitter"
                     elif source_type == "reddit_comments":
-                        st.link_button("View on Reddit", row['permalink'], width='stretch')                    
+                        upvotes = row.get('upvote_count', 0) or 0
+                        metrics_html = f"⬆️ {upvotes} Upvotes · ⬇️ {downvotes} Downvotes"
+                        downvotes = row.get('downvote_count', 0) or 0
+                        link_url = row.get('permalink', '#')
+                        link_label = "Open Reddit"
+                    else:
+                        link_url = "#"
+                        link_label = "Link"
+
+                    # Sentiment Color
+                    sent_color = {
+                        "positive": "#28a745", 
+                        "negative": "#dc3545", 
+                        "neutral": "#6c757d"
+                    }.get(sentiment, "#6c757d")
+
+                    st.html(f"""
+                        <div style="height: 100%; display: flex; flex-direction: column;">
+                            <div class="card-header">
+                                <div style="display: flex; gap: 1px; flex-direction: column;">
+                                    <span class="fullname" style="font-weight: bold; font-size: 16px;">{
+                                        f"{row['fullname']}" if row.get('fullname') else username
+                                    } </span>
+
+                                    <span class="username">{username if row.get('fullname') else ""}</span>
+                                </div>
+                                
+                                <span class="platform-badge" style="background-color: {style['bg']}; color: {style['color']};">
+                                    <img src={style['icon']} width="12" height="12"/>
+                                    {style['label']}
+                                </span>
+                            </div>
+
+                            <div style="margin-top: auto;">
+                                <div style="display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap;">
+                                    <span style="background: {sent_color}20; color: {sent_color}; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold;">
+                                        {sentiment.upper()}
+                                    </span>
+                                    <span style="background: #e9ecef20; color: gray; border: 1px solid #ced4da; padding: 1px 6px; border-radius: 4px; font-size: 11px;">
+                                        #{topic or 'General'}
+                                    </span>
+                                </div>
+                            </div>
+                            
+                            <div class="content-text" title="{content}">
+                                {content}
+                            </div>
+
+                            <div class="meta-row">
+                                {metrics_html}
+                            </div>
+                        </div>
+                    """)
+
+                    st.link_button(link_label, link_url, use_container_width=True)
 
     # The "Load More" Button
     if st.session_state.view_limit < len(df):
-        st.write("") 
-        if st.button("Load More Tweets", type="primary", width='stretch'):
-            st.session_state.view_limit += ITEMS_TO_ADD
-            st.rerun()
+        st.divider()
+        _, col_load_2, _ = st.columns([1, 2, 1])
+        with col_load_2:
+            if st.button(f"Load More ({len(df) - st.session_state.view_limit} remaining)", type="primary", use_container_width=True):
+                st.session_state.view_limit += ITEMS_TO_ADD
+                st.rerun()
+                
     elif len(df) > 0:
         st.caption(
             "<span style='font-weight: bold; text-align: center'>You have reached the end of the list. </span>",
             unsafe_allow_html=True
         )
+    else:
+        st.info("No results found matching your filters.")
+
+def get_source_style(source_type):
+    if source_type == "tweets" or source_type == "twitter":
+        return {
+            "icon" : "https://www.svgrepo.com/show/475689/twitter-color.svg",
+            "color": "#1DA1F2",
+            "bg": "rgba(29, 161, 242, 0.1)",
+            "label": "Twitter"
+        }
+    elif source_type == "reddit_comments" or source_type == "reddit":
+        return {
+            "icon": "https://www.svgrepo.com/show/475675/reddit-color.svg",
+            "color": "#FF4500",
+            "bg": "rgba(255, 69, 0, 0.1)",
+            "label": "Reddit"
+        }
+    return {"color": "#808080", "bg": "transparent", "label": "Unknown"}

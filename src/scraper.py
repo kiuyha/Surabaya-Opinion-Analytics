@@ -254,12 +254,13 @@ def scrape_reddit(search_query: str, depth: int = -1, time_budget: int = -1) -> 
             log.info("No more posts to scrape.")
             break
 
+        log.info(f"Scraped {len(posts)} comments from url: {response.url}.")
         scraped_data.extend([
             {
                 "id": p.get("id"),
                 "username": p.get("author", ""),
                 "text_content": p.get("title", "") + " " + p.get("selftext", ""),
-                "posted_at": datetime.fromtimestamp(p.get("created_utc")).isoformat(),
+                "posted_at": datetime.fromtimestamp(int(p.get("created_utc"))).isoformat(),
                 "upvote_count": p.get("ups"),
                 "downvote_count": p.get("downs"),
                 "permalink": base_url + p.get("permalink", "")

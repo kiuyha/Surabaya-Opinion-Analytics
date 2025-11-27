@@ -106,7 +106,6 @@ def show(df: pd.DataFrame):
     with sentiment_pie:
         st.subheader("Sentiment Distribution")
         make_pie_plot(df["sentiment"].value_counts(), ["positive", "negative", "neutral"], 'count')
-    
 
 def top_keywords(df: pd.DataFrame, title: str):
     with st.container():
