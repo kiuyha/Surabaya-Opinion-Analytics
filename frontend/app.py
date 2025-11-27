@@ -11,14 +11,14 @@ from src.core import supabase
 load_dotenv()
 st.set_page_config(layout="wide", page_title="Surabaya Opinion Analysis")
 
-def fetch_all_data():
+def fetch_all_rows(table_name):
     all_data = []
     page_size = 1000
     current_page = 0
 
     while True:
         # Fetch one page of data
-        response = supabase.table('tweets') \
+        response = supabase.table(table_name) \
             .select('*', 'topics(label)') \
             .order('id', desc=False) \
             .limit(page_size) \
@@ -35,8 +35,25 @@ def fetch_all_data():
 
 @st.cache_data(ttl=600)
 def load_data():
+    tweets_data = fetch_all_rows('tweets')
+    reddit_data = fetch_all_rows('reddit_comments')
+
+    if not tweets_data and not reddit_data:
+        raise Exception("No data found in Supabase (tweets or reddit)")
     
-    df = pd.DataFrame(all_data)
+    df_tweets = pd.DataFrame(tweets_data)
+    df_reddit = pd.DataFrame(reddit_data)
+    dfs_to_concat = []
+    
+    if not df_tweets.empty:
+        df_tweets['source_type'] = 'tweets'
+        dfs_to_concat.append(df_tweets)
+    
+    if not df_reddit.empty:
+        df_reddit['source_type'] = 'reddit_comments'
+        dfs_to_concat.append(df_reddit)
+    
+    df = pd.concat(dfs_to_concat, ignore_index=True)
     if 'posted_at' in df.columns:
         df['posted_at'] = pd.to_datetime(df['posted_at'])
     

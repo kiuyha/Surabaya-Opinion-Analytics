@@ -1,14 +1,14 @@
 from typing import TypedDict, Optional
 
-class SearchConfig(TypedDict):
+class ListSearchConfig(TypedDict):
     query: str
     depth: Optional[int]
     time_budget: Optional[int]
 
 class SearchConfigDict(TypedDict):
     """A dictionary representing a single search configuration."""
-    nitter: SearchConfig
-    reddit: SearchConfig
+    nitter: list[ListSearchConfig]
+    reddit: list[ListSearchConfig]
 
 class ScrapedTweetDict(TypedDict):
     """A dictionary representing a single tweet."""

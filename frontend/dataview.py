@@ -17,12 +17,20 @@ def show(df: pd.DataFrame):
             ["All", *df["topic"].unique()],
             index=0
         )
+        selected_type = st.selectbox(
+            "Filter by Source Type",
+            ["All", *df["source_type"].unique()],
+            index=0
+        )
 
     if selected_sentiment != "All":
         df = df[df["sentiment"] == selected_sentiment]
 
     if selected_topic != "All":
         df = df[df["topic"] == selected_topic]
+    
+    if selected_type != "All":
+        df = df[df["source_type"] == selected_type]
 
     if 'view_limit' not in st.session_state:
         st.session_state.view_limit = ITEMS_TO_ADD
@@ -42,6 +50,8 @@ def show(df: pd.DataFrame):
         for col, (_, row) in zip(cols, batch.iterrows()):
             with col:
                 with st.container(border=True, height=250):
+                    fullname = row.get('fullname')
+                    source_type = row.get('source_type')
                     username = row.get('username', 'Unknown User')
                     content = row.get('text_content', 'No content')
                     sentiment = row.get('sentiment', 'neutral')
@@ -79,9 +89,12 @@ def show(df: pd.DataFrame):
                     )
 
                     st.caption(content)
-                    tweet_url = f"https://twitter.com/{username}/status/{row['id']}"
-                    st.link_button("View on Twitter", tweet_url, width='stretch')
-                    
+
+                    if source_type == "tweets":
+                        tweet_url = f"https://twitter.com/{username}/status/{row['id']}"
+                        st.link_button("View on Twitter", tweet_url, width='stretch')
+                    elif source_type == "reddit_comments":
+                        st.link_button("View on Reddit", row['permalink'], width='stretch')                    
 
     # The "Load More" Button
     if st.session_state.view_limit < len(df):

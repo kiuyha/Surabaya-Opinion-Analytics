@@ -38,7 +38,7 @@ class Config:
             return default_value
     
     @property
-    def scrape_config(self) -> List[SearchConfigDict]:
+    def scrape_config(self) -> SearchConfigDict:
         """
         Fetches the search configuration from Supabase.
         """
