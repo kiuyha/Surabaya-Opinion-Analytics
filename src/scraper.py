@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from urllib.parse import quote_plus
 from .core import log, supabase
 from typing import Tuple, Optional
+from src.utils.types import ScrapedTweetDict
 
 def safetly_extract_text(element, xpath: str, attribute: Optional[str] = None)-> Optional[str]:
     try:
@@ -29,13 +30,12 @@ def get_posted_at(tweet)-> Optional[datetime]:
         return None
     return datetime.strptime(time_string.replace('·', ''), "%b %d, %Y %I:%M %p %Z")
 
-def extract_new_tweets_and_next_link(html_content: str)-> Tuple[list, Optional[str]]:
+def extract_new_tweets_and_next_link(html_content: str)-> Tuple[list[ScrapedTweetDict], Optional[str]]:
     tree = html.fromstring(html_content)
-    links = tree.xpath('.//div[contains(@class, "show-more")]/a')
     list_tweets = tree.xpath('.//div[contains(@class, "timeline-item")]')
 
     # we use list comprehension since it more fast than for loop
-    scraped_tweets = [
+    scraped_tweets: list[ScrapedTweetDict] = [
         {
             'id': tweet_id,
             'fullname': safetly_extract_text(tweet, './/a[contains(@class, "fullname")]'),
@@ -47,6 +47,7 @@ def extract_new_tweets_and_next_link(html_content: str)-> Tuple[list, Optional[s
             'retweet_count': int((safetly_extract_text(tweet, './/span[contains(@class, "tweet-stat") and .//span[contains(@class, "icon-retweet")]]') or '0').replace(',', '')),
             'quote_count': int((safetly_extract_text(tweet, './/span[contains(@class, "tweet-stat") and .//span[contains(@class, "icon-quote")]]') or '0').replace(',', '')),
         }
+
         for tweet in list_tweets
         if (tweet_id := exctract_id_tweet(tweet))
     ]
@@ -62,6 +63,7 @@ def extract_new_tweets_and_next_link(html_content: str)-> Tuple[list, Optional[s
 
     new_tweets = [tweet for tweet in scraped_tweets if tweet['id'] not in existing_ids]
 
+    links = tree.xpath('.//div[contains(@class, "show-more")]/a')
     if links and len(links) > 0:
         # idk why nitter use "show-more" class for "show newest" button so we use the second link
         next_link = (links[1] if len(links) > 1 else links[0]).attrib.get('href')
@@ -69,7 +71,7 @@ def extract_new_tweets_and_next_link(html_content: str)-> Tuple[list, Optional[s
         next_link = None
     return new_tweets, next_link
         
-def scrap_nitter(search_query: str, depth: int = -1, time_budget: int = -1)-> list:
+def scrap_nitter(search_query: str, depth: int = -1, time_budget: int = -1)-> list[ScrapedTweetDict]:
     """ This function is for scrapping tweets from twitter/X using Nitter
     Args:
         search_query (str): The query to search for

@@ -1,16 +1,11 @@
 from supabase import Client
 import logging
-from typing import Any, List, TypedDict, Optional, Mapping
+from typing import Any, List, Mapping
 from huggingface_hub import HfFolder
+from src.utils.types import SearchConfigDict
 
 # Not using log from src/config.py because it will make a circular import
 log = logging.getLogger(__name__)
-
-class SearchConfigDict(TypedDict):
-    """A dictionary representing a single search configuration."""
-    query: str
-    depth: Optional[int]
-    time_budget: Optional[int]
 
 class Config:
     def __init__(self, supabase_client: Client, env: Mapping[str, str]) -> None:

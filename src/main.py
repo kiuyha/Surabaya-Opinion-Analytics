@@ -2,11 +2,17 @@
 This file only run for daily pipeline to get new tweets. For the monthly retrain, use training/train_kmeans.py
 """
 from datetime import datetime, timezone
+
+import numpy as np
+from src.sentiment import predict_sentiment
 from .core import config, supabase, log
 from .scraper import scrap_nitter
 from .preprocess import processing_text
+import pandas as pd
 
 if __name__ == "__main__":
+
+    # Check if training is in progress
     response = supabase.table('app_config').select('value').eq('key', 'training-in-progress').single().execute()
     if response.data['value']:
         log.info("Training in progress, skipping daily pipeline.")
@@ -28,16 +34,29 @@ if __name__ == "__main__":
             time_budget=search.get('time_budget') or -1
         )
     ]
-
+    
     log.info(f"Found {len(new_data)} new tweets.")
 
     if not new_data:
         log.info("No new tweets found, skipping daily pipeline.")
         exit()
 
-    # Insert new tweets
-    supabase.table('tweets').insert(new_data).execute()
-    
+    df = pd.DataFrame(new_data)
+    log.info(f"Sample new tweet data:\n{df.head(5)}")
+
     # Doing preprocessing
-    # ner_data = processing_text(new_data, level='light')
-    # kmeans_data = processing_text(new_data, level='hard') 
+    df['processed_text_light'] = df['text_content'].apply(lambda x: processing_text(x, level='light'))
+    # df['processed_text_hard'] =  df['text_content'].apply(lambda x: processing_text(x, level='hard'))
+
+    # Add Sentiment Column
+    df['sentiment'] = df['processed_text_light'].apply(lambda x: predict_sentiment(x))
+
+    # Insert new tweets
+    clean_df  = (
+        df.drop(['text_content', 'processed_text_light'], axis=1)
+        .convert_dtypes()
+        .replace(np.nan, None)
+    )
+    supabase.table('tweets').upsert(
+        clean_df.to_dict(orient='records')
+    ).execute()
