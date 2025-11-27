@@ -1,4 +1,6 @@
 from transformers import pipeline, AutoTokenizer, AutoModelForSequenceClassification
+from typing import List
+import pandas as pd
 
 MODEL_NAME = "mdhugol/indonesia-bert-sentiment-classification"
 
@@ -17,10 +19,20 @@ LABEL_MAP = {
     "LABEL_2": "negative"
 }
 
-def predict_sentiment(cleaned_text: str) -> str|None:
-    """Predict sentiment for a single text."""
-    if not cleaned_text or not isinstance(cleaned_text, str):
-        return None
+def predict_sentiment_batch(texts: pd.Series, batch_size: int = 16) -> List[str]:
+    """
+    Predict sentiment for list of texts.
+    """
 
-    result = sentiment_pipeline(cleaned_text, truncation=True, max_length=512)[0]
-    return LABEL_MAP.get(result["label"], "neutral")
+    # Filter out non-strings (handle NaNs) to prevent pipeline crash
+    valid_texts = [t if isinstance(t, str) and t else "" for t in texts]
+
+    # The pipeline returns a generator/list of dicts: [{'label': 'LABEL_0', 'score': 0.9}, ...]
+    results = sentiment_pipeline(valid_texts, batch_size=batch_size, truncation=True, max_length=512)
+
+    final_labels = [
+        LABEL_MAP.get(res["label"], "neutral") 
+        for res in results
+    ]
+    
+    return final_labels

@@ -18,6 +18,7 @@ import joblib
 from gensim.models import FastText
 import pandas as pd
 from src.utils.visualize import create_cluster_plot, create_kmeans_eval_plot
+import json
 
 def sentence_vector(doc: str, fastext_model: FastText) -> np.ndarray:
     vectors = [fastext_model.wv[word] for word in doc if word in fastext_model.wv]
@@ -28,6 +29,7 @@ def sentence_vector(doc: str, fastext_model: FastText) -> np.ndarray:
 def text_pipeline(
     texts: pd.Series,
     vector_size: int = 300,
+    model: FastText|None = None
 ) -> Tuple[FastText, np.ndarray]:
     """
     Converts a series of text documents into a vector representation using FastText by averaging word vectors for each document.
@@ -43,14 +45,17 @@ def text_pipeline(
         cpu_core = 4
 
     log.info(f"Training FastText model with vector_size={vector_size}...")
-    fasttext_model = FastText(
-        tokenized_texts,
-        vector_size=vector_size,
-        window=5,
-        min_count=2,
-        workers=cpu_core,
-        seed=42,
-    )
+    if model:
+        fasttext_model = model
+    else:
+        fasttext_model = FastText(
+            tokenized_texts,
+            vector_size=vector_size,
+            window=5,
+            min_count=2,
+            workers=cpu_core,
+            seed=42,
+        )
 
     log.info("Creating document vectors by averaging...")
     vectors = [
@@ -271,7 +276,7 @@ def save_to_supabase(
         log.error(f"Failed to update topics in Supabase: {e}", exc_info=True)
         return []
 
-def push_models_to_hf(kmeans_model: KMeans, text_model: FastText):
+def push_models_to_hf(kmeans_model: KMeans, text_model: FastText, topic_map: Dict[int, int]):
     """Saves models locally, then pushes them to the Hugging Face Hub."""
     HF_REPO_KMEANS_ID = config.env.get("HF_REPO_KMEANS_ID")
 
@@ -291,6 +296,7 @@ def push_models_to_hf(kmeans_model: KMeans, text_model: FastText):
         # Define file paths inside the temp directory
         kmeans_path = os.path.join(temp_dir, "kmeans.joblib")
         fasttext_path = os.path.join(temp_dir, "fasttext.model")
+        config_path = os.path.join(temp_dir, "config.json")
         readme_path = os.path.join(temp_dir, "README.md")
 
         # Save models using their recommended, native methods
@@ -299,6 +305,10 @@ def push_models_to_hf(kmeans_model: KMeans, text_model: FastText):
 
         log.info(f"Saving FastText model to {fasttext_path}...")
         text_model.save(fasttext_path)
+
+        # Save Junk IDs to JSON
+        with open(config_path, "w") as f:
+            json.dump({"topic_map": topic_map}, f)
 
         # Create a README.md file (Model Card) to document the models
         log.info("Generating README.md (Model Card)...")
@@ -414,6 +424,7 @@ if __name__ == "__main__":
 
     # Save the clean topics and their generated labels to the database
     newly_created_topics = save_to_supabase(clean_keywords, generated_labels)
+    kmeans_label_to_db_id = {}
 
     # Update the 'tweets' table with the correct topic IDs
     if newly_created_topics:
@@ -435,9 +446,9 @@ if __name__ == "__main__":
         supabase.table('tweets').upsert(update_data).execute()
         
         log.info("Successfully updated tweet topics.")
-
+    
     # Push models to Hugging Face Hub
-    push_models_to_hf(kmeans_model, text_model)
+    push_models_to_hf(kmeans_model, text_model, kmeans_label_to_db_id)
 
     # Mark training complete
     supabase.table('app_config').update({"value": False}).eq('key', 'training-in-progress').execute()

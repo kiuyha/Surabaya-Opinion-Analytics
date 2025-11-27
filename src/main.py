@@ -4,14 +4,14 @@ This file only run for daily pipeline to get new tweets. For the monthly retrain
 from datetime import datetime, timezone
 
 import numpy as np
-from src.sentiment import predict_sentiment
+from src.sentiment import predict_sentiment_batch
+from src.topics import predict_topics
 from .core import config, supabase, log
 from .scraper import scrap_nitter
 from .preprocess import processing_text
 import pandas as pd
 
 if __name__ == "__main__":
-
     # Check if training is in progress
     response = supabase.table('app_config').select('value').eq('key', 'training-in-progress').single().execute()
     if response.data['value']:
@@ -46,14 +46,17 @@ if __name__ == "__main__":
 
     # Doing preprocessing
     df['processed_text_light'] = df['text_content'].apply(lambda x: processing_text(x, level='light'))
-    # df['processed_text_hard'] =  df['text_content'].apply(lambda x: processing_text(x, level='hard'))
+    df['processed_text_hard'] =  df['text_content'].apply(lambda x: processing_text(x, level='hard'))
 
     # Add Sentiment Column
-    df['sentiment'] = df['processed_text_light'].apply(lambda x: predict_sentiment(x))
+    df['sentiment'] = predict_sentiment_batch(df['processed_text_hard'])
+
+    # Add topics column
+    df['topic_id'] = predict_topics(df['processed_text_hard'])
 
     # Insert new tweets
     clean_df  = (
-        df.drop(['text_content', 'processed_text_light'], axis=1)
+        df.drop(['processed_text_light', 'processed_text_hard'], axis=1)
         .convert_dtypes()
         .replace(np.nan, None)
     )
