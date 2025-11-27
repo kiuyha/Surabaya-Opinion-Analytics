@@ -28,7 +28,7 @@ def deploy_assets():
     success_count = 0
     for filename in FILES_TO_COPY:
         dir_des = os.path.dirname(filename)
-        if not os.path.exists(dir_des):
+        if dir_des and not os.path.exists(dir_des):
             os.makedirs(dir_des)
         src_file = os.path.join(SOURCE_DIR, filename)
         dest_file = os.path.join(DEST_DIR, filename)
