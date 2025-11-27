@@ -8,7 +8,7 @@ def deploy_assets():
     FILES_TO_COPY = [
         "preprocess.py",
         "core.py",
-        "config.py"
+        "config.py",
         "utils/types.py"
     ]
 

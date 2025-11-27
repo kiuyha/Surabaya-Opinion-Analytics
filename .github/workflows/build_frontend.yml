@@ -1,6 +1,7 @@
 name: Build and Deploy to Hugging Face
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
@@ -16,11 +17,6 @@ jobs:
       
       - name: run deploy.py
         run: python3 -m frontend.deploy
-
-      - name: Prepare files
-        run: |
-          mkdir -p frontend/src
-          cp preprocess.py -t frontend/src -f
 
       - name: Push entire repository to Hugging Face Space
         run: |
