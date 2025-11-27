@@ -430,7 +430,7 @@ if __name__ == "__main__":
     if newly_created_topics:
         # Create the final mapping from numeric label to permanent database ID
         kmeans_label_to_db_id = {
-            label: topic['id']
+            int(label): topic['id']
             for label, topic in zip(good_kmeans_labels, newly_created_topics)
         }
         
