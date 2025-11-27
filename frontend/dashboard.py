@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from wordcloud import WordCloud
 from collections import Counter
 
-card_style = """
+st.markdown("""
     <style>
         .metric-card {
             background-color: var(--secondary-background-color);
@@ -13,7 +13,6 @@ card_style = """
             border-radius: 10px;
             padding: 20px;
             text-align: center;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         }
         .metric-label {
             font-size: 1.2rem;
@@ -36,8 +35,7 @@ card_style = """
             text-overflow: ellipsis;
         }
     </style>
-"""
-st.html(card_style)
+""", unsafe_allow_html=True)
 
 def show(df: pd.DataFrame):
     st.header("Dashboard Page")

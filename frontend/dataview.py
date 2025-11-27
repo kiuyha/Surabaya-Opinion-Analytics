@@ -3,6 +3,28 @@ import pandas as pd
 
 N_COLS = 3
 ITEMS_TO_ADD = 15
+METRICS_ICONS = {
+    "Likes": "https://www.svgrepo.com/show/476608/like.svg",
+    "Retweets": "https://www.svgrepo.com/show/447763/retweet.svg",
+    "Quotes": "https://www.svgrepo.com/show/365674/quotes-thin.svg",
+    "Comments": "https://www.svgrepo.com/show/522067/comment-1.svg",
+    "Upvotes": "https://www.svgrepo.com/show/334337/upvote.svg",
+    "Downvotes": "https://www.svgrepo.com/show/333916/downvote.svg",
+}
+SOURCE_STYLES = {
+    "Twitter": {
+        "icon": "https://www.svgrepo.com/show/475689/twitter-color.svg",
+        "color": "#1DA1F2",
+        "bg": "rgba(29, 161, 242, 0.1)",
+        "label": "Twitter"
+    },
+    "Reddit": {
+        "icon": "https://www.svgrepo.com/show/475675/reddit-color.svg",
+        "color": "#FF4500",
+        "bg": "rgba(255, 69, 0, 0.1)",
+        "label": "Reddit"
+    }
+}
 
 def show(df: pd.DataFrame):
     with st.container(horizontal=True):
@@ -82,10 +104,14 @@ def show(df: pd.DataFrame):
         }
         .meta-row {
             display: flex;
-            gap: 10px;
+            gap: 8px;
             font-size: 12px;
-            color: gray;
             margin-top: auto;
+        }
+        .meta-item{
+            display: flex;
+            gap: 4px;
+            align-items: center;
         }
     </style>
     """, unsafe_allow_html=True)
@@ -102,7 +128,8 @@ def show(df: pd.DataFrame):
         for col, (_, row) in zip(cols, batch.iterrows()):
             with col:
                 source_type = row.get('source_type', 'unknown')
-                style = get_source_style(source_type)
+                style = SOURCE_STYLES.get(source_type)
+                print(style)
                 
                 # Container height ensures uniform grid
                 with st.container(border=True, height=280):
@@ -112,20 +139,24 @@ def show(df: pd.DataFrame):
                     topic = row.get('topic')
                     
                     metrics_html = ""
-                    if source_type == "tweets":
-                        likes = row.get('like_count', 0) or 0
-                        rts = row.get('retweet_count', 0) or 0
-                        quotes = row.get('quote_count', 0) or 0
-                        comments = row.get('comment_count', 0) or 0
-                        metrics_html = f"❤️ {likes} · 🔁 {rts} · 🔁 {quotes} · 🔁 {comments}"
+                    if source_type == "Twitter":
+                        metrics = {
+                            "Likes": row.get('like_count', 0) or 0,
+                            "Retweets": row.get('retweet_count', 0) or 0,
+                            "Quotes": row.get('quote_count', 0) or 0,
+                            "Comments": row.get('comment_count', 0) or 0
+                        }
                         link_url = f"https://twitter.com/{username}/status/{row['id']}"
                         link_label = "Open Twitter"
-                    elif source_type == "reddit_comments":
-                        upvotes = row.get('upvote_count', 0) or 0
-                        metrics_html = f"⬆️ {upvotes} Upvotes · ⬇️ {downvotes} Downvotes"
-                        downvotes = row.get('downvote_count', 0) or 0
+
+                    elif source_type == "Reddit":
+                        metrics = {
+                            "Upvotes": row.get('upvote_count', 0) or 0,
+                            "Downvotes": row.get('downvote_count', 0) or 0
+                        }
                         link_url = row.get('permalink', '#')
                         link_label = "Open Reddit"
+                        
                     else:
                         link_url = "#"
                         link_label = "Link"
@@ -136,6 +167,18 @@ def show(df: pd.DataFrame):
                         "negative": "#dc3545", 
                         "neutral": "#6c757d"
                     }.get(sentiment, "#6c757d")
+
+                    metrics_html = "".join(
+                        [
+                            f"""
+                                <div class="meta-item">
+                                    <img src={METRICS_ICONS.get(metric)} width="16" height="16"/> 
+                                    <span>{value}</span>
+                                </div>
+                            """
+                            for metric, value in metrics.items()
+                        ]
+                    )
 
                     st.html(f"""
                         <div style="height: 100%; display: flex; flex-direction: column;">
@@ -159,7 +202,7 @@ def show(df: pd.DataFrame):
                                     <span style="background: {sent_color}20; color: {sent_color}; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold;">
                                         {sentiment.upper()}
                                     </span>
-                                    <span style="background: #e9ecef20; color: gray; border: 1px solid #ced4da; padding: 1px 6px; border-radius: 4px; font-size: 11px;">
+                                    <span style="color: gray; border: 1px solid #ced4da; padding: 1px 6px; border-radius: 4px; font-size: 11px;">
                                         #{topic or 'General'}
                                     </span>
                                 </div>
@@ -193,20 +236,3 @@ def show(df: pd.DataFrame):
         )
     else:
         st.info("No results found matching your filters.")
-
-def get_source_style(source_type):
-    if source_type == "tweets" or source_type == "twitter":
-        return {
-            "icon" : "https://www.svgrepo.com/show/475689/twitter-color.svg",
-            "color": "#1DA1F2",
-            "bg": "rgba(29, 161, 242, 0.1)",
-            "label": "Twitter"
-        }
-    elif source_type == "reddit_comments" or source_type == "reddit":
-        return {
-            "icon": "https://www.svgrepo.com/show/475675/reddit-color.svg",
-            "color": "#FF4500",
-            "bg": "rgba(255, 69, 0, 0.1)",
-            "label": "Reddit"
-        }
-    return {"color": "#808080", "bg": "transparent", "label": "Unknown"}

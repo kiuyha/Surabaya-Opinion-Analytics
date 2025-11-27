@@ -268,7 +268,14 @@ def scrape_reddit(search_query: str, depth: int = -1, time_budget: int = -1) -> 
             for p in posts
         ])
         
+        previous_timestamp = last_timestamp
         last_timestamp = posts[-1].get("created_utc")
+
+        if last_timestamp == previous_timestamp:
+            log.info("No more posts to scrape.")
+            break
+
+        index += 1
         time.sleep(1)
 
     return scraped_data
