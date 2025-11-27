@@ -5,6 +5,7 @@ from huggingface_hub import hf_hub_download
 from src.training.train_topics_model import text_pipeline
 import pandas as pd
 from typing import List, Optional, cast
+import numpy as np
 
 REPO_ID = "Kiuyha/surabaya-opinion-tweet-clusters"
 kmeans_path = hf_hub_download(repo_id=REPO_ID, filename="kmeans.joblib")
@@ -23,7 +24,7 @@ print(f"FastText model loaded with vector size {fasttext_model.vector_size}.")
 
 def predict_topics(texts: pd.Series) -> List[Optional[int]]:
     _, vectors = text_pipeline(texts, model=fasttext_model)
-    raw_predictions = kmeans_model.predict(vectors)
+    raw_predictions = kmeans_model.predict(vectors.astype(np.float32))
     
     # Filter predictions: Return ID if valid, None if junk
     final_topics = [
