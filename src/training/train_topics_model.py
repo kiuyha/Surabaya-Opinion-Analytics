@@ -23,8 +23,8 @@ import json
 def sentence_vector(doc: str, fastext_model: FastText) -> np.ndarray:
     vectors = [fastext_model.wv[word] for word in doc if word in fastext_model.wv]
     if vectors:
-        return np.mean(vectors, axis=0)
-    return np.zeros(fastext_model.vector_size)
+        return np.mean(vectors, axis=0, dtype=np.float32)
+    return np.zeros(fastext_model.vector_size, dtype=np.float32)
 
 def text_pipeline(
     texts: pd.Series,
