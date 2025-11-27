@@ -1,0 +1,105 @@
+import streamlit as st
+from streamlit_option_menu import option_menu
+import dashboard
+import diagnostics
+import dataview
+from dotenv import load_dotenv
+import pandas as pd
+from src.preprocess import processing_text
+from src.core import supabase
+
+load_dotenv()
+st.set_page_config(layout="wide", page_title="Surabaya Opinion Analysis")
+
+@st.cache_data(ttl=600)
+def load_data():
+    all_data = []
+    page_size = 1000
+    current_page = 0
+
+    while True:
+        # Fetch one page of data
+        response = supabase.table('tweets') \
+            .select('*', 'topics(label)') \
+            .order('id', desc=False) \
+            .limit(page_size) \
+            .offset(current_page * page_size) \
+            .execute()
+        
+        page_of_data = response.data        
+        if not page_of_data:
+            break
+        
+        # Add the fetched tweets to our main list and go to the next page
+        all_data.extend(page_of_data)
+        current_page += 1
+    
+    df = pd.DataFrame(all_data)
+    if 'posted_at' in df.columns:
+        df['posted_at'] = pd.to_datetime(df['posted_at'])
+    
+    if 'topics' in df.columns:
+        df['topic'] = df['topics'].apply(lambda x: x['label'] if x else None)
+        df.drop(columns=['topics', 'topic_id'], inplace=True)
+
+    df['processed_text'] = df['text_content'].apply(lambda x: processing_text(x))
+
+    return df
+
+@st.cache_data(ttl=600)
+def load_config():
+    response = supabase.table('app_config').select('key', 'value').execute()
+    return {
+        map['key']: map['value'] 
+        for map in response.data
+    }
+
+selected = option_menu(
+    menu_title=None,
+    options=["Dashboard", "Model Performance", "Data View"],
+    icons=["house", "bar-chart-line", "table"],
+    orientation="horizontal",
+    styles={
+        "nav-link": {
+            "font-size": "14px",
+            "text-align": "center",
+            "margin": "0px",
+        },
+        "nav-link-selected": {
+            "background-color": "#00509E",
+            "color": "white",
+            "font-weight": "400"
+        },
+    }
+)
+
+config = load_config()
+st.html(f"""
+    <style>
+    .top-right-corner {{
+        position: fixed;
+        top: 0.8rem;
+        left: 5rem; 
+        z-index: 99999999;
+        font-size: 1rem;
+        padding: 5px;
+        border-radius: 5px;
+        font-weight: 600;
+    }}
+    </style>
+    
+    <div class="top-right-corner">
+        Last Updated: {
+            pd.to_datetime(config['last-updated']).strftime('%Y-%m-%d %H:%M:%S')
+        }
+    </div>
+    """)
+
+if selected == 'Dashboard':
+    df = load_data()
+    dashboard.show(df)
+elif selected == 'Model Performance':
+    diagnostics.show()
+elif selected == 'Data View':
+    df = load_data()
+    dataview.show(df)

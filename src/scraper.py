@@ -4,9 +4,12 @@ import time
 import random
 from datetime import datetime, timezone
 from urllib.parse import quote_plus
+
+from numba.core.typeconv.typeconv import base_url
+import requests
 from .core import log, supabase
 from typing import Tuple, Optional
-from src.utils.types import ScrapedTweetDict
+from src.utils.types import ScrapedTweetDict, ScrapedRedditDict
 
 def safetly_extract_text(element, xpath: str, attribute: Optional[str] = None)-> Optional[str]:
     try:
@@ -187,4 +190,86 @@ def scrap_nitter(search_query: str, depth: int = -1, time_budget: int = -1)-> li
                 break
     
     log.info(f"Scraped {len(scraped_data)} tweets\n")
+    return scraped_data
+
+def scrape_reddit(search_query: str, depth: int = -1, time_budget: int = -1) -> list[ScrapedRedditDict]:
+    """ This function is for scrapping tweets from twitter/X using Nitter
+    Args:
+        search_query (str): The query to search for
+        depth (int): The depth of the search (default: -1 for infinite)
+        time_budget (int): The time budget for the search in seconds (default: -1 for infinite)
+    Returns:
+        list: A list of tweets
+    Raises:
+        ValueError: If search_query is None
+        TypeError: If search_query is not a string
+        TypeError: If depth is not an integer
+    """
+    if search_query is None:
+        raise ValueError("search_query cannot be None")
+    elif not isinstance(search_query, str):
+        raise TypeError("search_query must be a string")
+
+    if not isinstance(depth, int):
+        raise TypeError("depth must be an integer")
+    
+    if time_budget != -1 and not isinstance(time_budget, int):
+        raise TypeError("time_budget must be an integer")
+
+    log.info(f"Scraping reddit for query: {search_query} with depth: {depth} and time budget: {time_budget}")
+
+    scraped_data = []
+    last_timestamp = None
+    base_url = "https://www.reddit.com"
+    start_time = time.time()
+    index = 1
+    while True:
+        # Check the time budget first
+        if time_budget != -1 and (time.time() - start_time) > time_budget:
+            log.info(f"Time budget of {time_budget}s exceeded. Stopping gracefully.")
+            break
+        
+        # Check if we've hit the desired depth
+        if depth != -1 and index > depth:
+            log.info(f"Reached max depth of {depth}. Stopping.")
+            break
+
+        params = {
+            "q": search_query,
+            "size": 100,
+            "sort": "desc"
+        }
+
+        if last_timestamp:
+            params["before"] = last_timestamp
+
+        try:
+            response = requests.get("https://api.pullpush.io/reddit/search", params=params, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            posts = data.get("data", [])
+        except Exception as e:
+            log.error(f"An error occurred: {e}")
+            break
+
+        if not posts:
+            log.info("No more posts to scrape.")
+            break
+
+        scraped_data.extend([
+            {
+                "id": p.get("id"),
+                "username": p.get("author", ""),
+                "text_content": p.get("title", "") + " " + p.get("selftext", ""),
+                "posted_at": datetime.fromtimestamp(p.get("created_utc")).isoformat(),
+                "upvote_count": p.get("ups"),
+                "downvote_count": p.get("downs"),
+                "permalink": base_url + p.get("permalink", "")
+            }
+            for p in posts
+        ])
+        
+        last_timestamp = posts[-1].get("created_utc")
+        time.sleep(1)
+
     return scraped_data

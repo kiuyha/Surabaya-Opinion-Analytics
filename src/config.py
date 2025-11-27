@@ -1,7 +1,6 @@
 from supabase import Client
 import logging
 from typing import Any, List, Mapping
-from huggingface_hub import HfFolder
 from src.utils.types import SearchConfigDict
 
 # Not using log from src/config.py because it will make a circular import
@@ -153,6 +152,8 @@ class Config:
         Gets the Hugging Face token from an environment variable (for Actions)
         or the local folder (for development).
         """
+        from huggingface_hub import HfFolder
+
         if self._hf_token is None:
             # Prioritize the environment variable for CI/CD environments
             token = self.env.get("HF_TOKEN")

@@ -327,128 +327,155 @@ def push_models_to_hf(kmeans_model: KMeans, text_model: FastText, topic_map: Dic
         except Exception as e:
             log.error(f"An error occurred while uploading to Hugging Face: {e}")
 
-if __name__ == "__main__":    
-    # Load the tweets from Supabase
-    log.info('Loading tweets from Supabase...')
-
-    # we use pagination method since the supabase only load 1000 tweets at a time in default (could be increased but using pagination is more reliable)
-    all_tweets = []
+def fetch_all_rows(table_name, columns):
+    """Helper to fetch all rows from a table using pagination."""
+    log.info(f'Loading {table_name} from Supabase...')
+    all_data = []
     page_size = 1000
     current_page = 0
 
     while True:
-        # Fetch one page of data
-        response = supabase.table('tweets') \
-            .select('id', 'text_content') \
+        response = supabase.table(table_name) \
+            .select(*columns) \
             .order('id', desc=False) \
             .limit(page_size) \
             .offset(current_page * page_size) \
             .execute()
         
-        page_of_tweets = response.data        
-        if not page_of_tweets:
+        page_of_data = response.data        
+        if not page_of_data:
             break
         
-        # Add the fetched tweets to our main list and go to the next page
-        all_tweets.extend(page_of_tweets)
+        all_data.extend(page_of_data)
         current_page += 1
-
-    if not all_tweets:
-        raise Exception("No tweets found in Supabase")
     
-    log.info(f"Loaded {len(all_tweets)} tweets from Supabase.")
-    df = pd.DataFrame(all_tweets)
-    
-    # Mark training in progress
-    supabase.table('app_config').update({"value": True}).eq('key', 'training-in-progress').execute()
+    log.info(f"Loaded {len(all_data)} rows from {table_name}.")
+    return all_data
 
-    df['processed_text'] = df['text_content'].apply(processing_text)
+if __name__ == "__main__":
+    try:
+        # Mark training in progress
+        supabase.table('app_config').update({"value": True}).eq('key', 'training-in-progress').execute()
 
-    # Load the vectorized text data
-    text_model, vectors = text_pipeline(df['processed_text'])
+        log.info('Loading data from Supabase...')
 
-    # Find the best K using the silhouette method
-    # min_k because if it too small the topic become too generic and max_k because if it too large the topic become too specific
-    kmeans_model, keywords, labels, junk_topics_id = find_and_train_optimal_model(
-        vectors,
-        text_model,
-        df['processed_text'].to_list(),
-        min_k=3,
-        max_k=8
-    )
+        tweets_data = fetch_all_rows('tweets', ['id', 'text_content'])
+        reddit_data = fetch_all_rows('reddit_comments', ['id', 'text_content'])
 
-    sil_score = silhouette_score(vectors, labels)
-    log.info(f"Silhouette score for optimal model: {sil_score:.2f}")
-
-    # temporarily add the cluster label to the dataframe
-    df['cluster_label'] = labels
-
-    if junk_topics_id:
-        log.info(f"Re-labeling junk topics {junk_topics_id} to -1...")
-        df['cluster_label'] = df['cluster_label'].replace(junk_topics_id, -1)
-
-    clean_keywords = [
-        keyword_list for i, keyword_list in enumerate(keywords) 
-        if i not in junk_topics_id
-    ]
-
-    USE_GEMINI_API = config.env.get('USE_GEMINI_API', False)
-    if USE_GEMINI_API:
-        # only use 10 top keywords for API
-        keywords_for_api = [
-            keyword_list[:10] for keyword_list in clean_keywords
-        ]
-        generated_labels = labeling_cluster(keywords_for_api)
-    else:
-        log.info("Generating labels from top 10 keywords (no API)...")
-        generated_labels = [
-            ", ".join(keyword[:10])
-            for keyword in clean_keywords
-        ]
-        for i, label in enumerate(generated_labels):
-            log.info(f"Generated label for Topic #{i}: {label}")
-
-    # Create a mapping from the good numeric labels to the generated names for plotting
-    good_kmeans_labels = sorted([
-        i 
-        for i in df['cluster_label'].unique()
-        if i != -1
-    ])
-    topic_labels_map = {
-        label: name
-        for label, name in zip(good_kmeans_labels, generated_labels)
-    }
-    
-    # Create the interactive plot using the generated names
-    create_cluster_plot(df, vectors, topic_labels_map)
-
-    # Save the clean topics and their generated labels to the database
-    newly_created_topics = save_to_supabase(clean_keywords, generated_labels)
-    kmeans_label_to_db_id = {}
-
-    # Update the 'tweets' table with the correct topic IDs
-    if newly_created_topics:
-        # Create the final mapping from numeric label to permanent database ID
-        kmeans_label_to_db_id = {
-            int(label): topic['id']
-            for label, topic in zip(good_kmeans_labels, newly_created_topics)
-        }
+        if not tweets_data and not reddit_data:
+            raise Exception("No data found in Supabase (tweets or reddit)")
         
-        df['topic_id'] = (
-            df['cluster_label']
-            .map(kmeans_label_to_db_id)
-            .replace(np.nan, None)
-            .astype('Int64')
+        df_tweets = pd.DataFrame(tweets_data)
+        df_reddit = pd.DataFrame(reddit_data)
+        dfs_to_concat = []
+        
+        if not df_tweets.empty:
+            df_tweets['source_type'] = 'tweets'
+            dfs_to_concat.append(df_tweets)
+        
+        if not df_reddit.empty:
+            df_reddit['source_type'] = 'reddit_comments'
+            dfs_to_concat.append(df_reddit)
+        
+        df = pd.concat(dfs_to_concat, ignore_index=True)
+        log.info(f"Training on {len(df)} records...")
+        
+        df['processed_text'] = df['text_content'].apply(processing_text)
+
+        # Load the vectorized text data
+        text_model, vectors = text_pipeline(df['processed_text'])
+
+        # Find the best K using the silhouette method
+        # min_k because if it too small the topic become too generic and max_k because if it too large the topic become too specific
+        kmeans_model, keywords, labels, junk_topics_id = find_and_train_optimal_model(
+            vectors,
+            text_model,
+            df['processed_text'].to_list(),
+            min_k=3,
+            max_k=8
         )
 
-        log.info("Updating 'topic_id' in 'tweets' table (setting junk topics to NULL)...")
-        update_data = df[['id', 'topic_id']].to_dict(orient='records')
-        supabase.table('tweets').upsert(update_data).execute()
-        
-        log.info("Successfully updated tweet topics.")
-    
-    # Push models to Hugging Face Hub
-    push_models_to_hf(kmeans_model, text_model, kmeans_label_to_db_id)
+        sil_score = silhouette_score(vectors, labels)
+        log.info(f"Silhouette score for optimal model: {sil_score:.2f}")
 
-    # Mark training complete
-    supabase.table('app_config').update({"value": False}).eq('key', 'training-in-progress').execute()
+        # temporarily add the cluster label to the dataframe
+        df['cluster_label'] = labels
+
+        if junk_topics_id:
+            log.info(f"Re-labeling junk topics {junk_topics_id} to -1...")
+            df['cluster_label'] = df['cluster_label'].replace(junk_topics_id, -1)
+
+        clean_keywords = [
+            keyword_list for i, keyword_list in enumerate(keywords) 
+            if i not in junk_topics_id
+        ]
+
+        USE_GEMINI_API = config.env.get('USE_GEMINI_API', False)
+        if USE_GEMINI_API:
+            # only use 10 top keywords for API
+            keywords_for_api = [
+                keyword_list[:10] for keyword_list in clean_keywords
+            ]
+            generated_labels = labeling_cluster(keywords_for_api)
+        else:
+            log.info("Generating labels from top 10 keywords (no API)...")
+            generated_labels = [
+                ", ".join(keyword[:10])
+                for keyword in clean_keywords
+            ]
+            for i, label in enumerate(generated_labels):
+                log.info(f"Generated label for Topic #{i}: {label}")
+
+        # Create a mapping from the good numeric labels to the generated names for plotting
+        good_kmeans_labels = sorted([
+            i 
+            for i in df['cluster_label'].unique()
+            if i != -1
+        ])
+        topic_labels_map = {
+            label: name
+            for label, name in zip(good_kmeans_labels, generated_labels)
+        }
+        
+        # Create the interactive plot using the generated names
+        create_cluster_plot(df, vectors, topic_labels_map)
+
+        # Save the clean topics and their generated labels to the database
+        newly_created_topics = save_to_supabase(clean_keywords, generated_labels)
+        kmeans_label_to_db_id = {}
+
+        # Update the 'tweets' table with the correct topic IDs
+        if newly_created_topics:
+            # Create the final mapping from numeric label to permanent database ID
+            kmeans_label_to_db_id = {
+                int(label): topic['id']
+                for label, topic in zip(good_kmeans_labels, newly_created_topics)
+            }
+            
+            df['topic_id'] = (
+                df['cluster_label']
+                .map(kmeans_label_to_db_id)
+                .replace(np.nan, None)
+                .astype('Int64')
+            )
+
+            for table in ['tweets', 'reddit_comments']:
+                subset = df[df['source_type'] == table]
+                
+                if not subset.empty:
+                    log.info(f"Updating 'topic_id' in '{table}' table...")
+                    update_data = subset[['id', 'topic_id']].to_dict(orient='records')
+                    supabase.table(table).upsert(update_data).execute()
+            
+            log.info("Successfully updated all topics.")
+        
+        # Push models to Hugging Face Hub
+        push_models_to_hf(kmeans_model, text_model, kmeans_label_to_db_id)
+
+    except Exception as e:
+        log.error(f"Error training topics model: {e}")
+        raise e
+
+    finally:
+        # Mark training complete
+        supabase.table('app_config').update({"value": False}).eq('key', 'training-in-progress').execute()
