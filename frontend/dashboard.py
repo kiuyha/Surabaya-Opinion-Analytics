@@ -5,40 +5,40 @@ import matplotlib.pyplot as plt
 from wordcloud import WordCloud
 from collections import Counter
 
-st.markdown("""
-    <style>
-        .metric-card {
-            background-color: var(--secondary-background-color);
-            border: 1px solid var(--secondary-background-color);
-            border-radius: 10px;
-            padding: 20px;
-            text-align: center;
-        }
-        .metric-label {
-            font-size: 1.2rem;
-            margin-bottom: 5px;
-            text-transform: uppercase;
-            font-weight: 600;
-        }
-        .metric-value {
-            font-size: 7rem;
-            font-weight: 700;
-            margin: 0;
-            color: var(--text-color);
-        }
-        .metric-text {
-            font-size: 2rem;
-            font-weight: 700;
-            margin: 0;
-            color: var(--primary-color);
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-    </style>
-""", unsafe_allow_html=True)
 
 def show(df: pd.DataFrame):
     st.header("Dashboard Page")
+    st.markdown("""
+        <style>
+            .metric-card {
+                background-color: var(--secondary-background-color);
+                border: 1px solid var(--secondary-background-color);
+                border-radius: 10px;
+                padding: 20px;
+                text-align: center;
+            }
+            .metric-label {
+                font-size: 1.2rem;
+                margin-bottom: 5px;
+                text-transform: uppercase;
+                font-weight: 600;
+            }
+            .metric-value {
+                font-size: 7rem;
+                font-weight: 700;
+                margin: 0;
+                color: var(--text-color);
+            }
+            .metric-text {
+                font-size: 2rem;
+                font-weight: 700;
+                margin: 0;
+                color: var(--primary-color);
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+        </style>
+    """, unsafe_allow_html=True)
 
     min_date = df["posted_at"].min().date()
     max_date = df["posted_at"].max().date()
