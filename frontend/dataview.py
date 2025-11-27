@@ -129,7 +129,6 @@ def show(df: pd.DataFrame):
             with col:
                 source_type = row.get('source_type', 'unknown')
                 style = SOURCE_STYLES.get(source_type)
-                print(style)
                 
                 # Container height ensures uniform grid
                 with st.container(border=True, height=280):

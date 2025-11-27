@@ -48,4 +48,3 @@ def deploy_assets():
 
 if __name__ == "__main__":
     deploy_assets()
-    
