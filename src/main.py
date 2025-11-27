@@ -40,7 +40,7 @@ if __name__ == "__main__":
         for search in config.scrape_config
         if search.get('query')
         for comment in scrape_reddit(
-            search_query=search['reddit']['query']
+            search_query=search['reddit']['query'],
             depth=search['reddit'].get('depth') or -1,
             time_budget=search['reddit'].get('time_budget') or -1
         )
