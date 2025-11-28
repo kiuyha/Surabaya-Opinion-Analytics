@@ -5,10 +5,18 @@ import diagnostics
 import dataview
 from dotenv import load_dotenv
 import pandas as pd
-from src.preprocess import processing_text
-from src.core import supabase
+import os
+from supabase import create_client
 
 load_dotenv()
+# Initialize Supabase
+url= os.environ.get("SUPABASE_URL")
+key = os.environ.get("SUPABASE_KEY")
+
+if url is None or key is None:
+    raise Exception("Missing Supabase URL or key")
+supabase = create_client(url, key)
+
 st.set_page_config(layout="wide", page_title="Surabaya Opinion Analysis")
 
 def fetch_all_rows(table_name):
@@ -62,8 +70,6 @@ def load_data():
     if 'topics' in df.columns:
         df['topic'] = df['topics'].apply(lambda x: x['label'] if x else None)
         df.drop(columns=['topics', 'topic_id'], inplace=True)
-
-    df['processed_text'] = df['text_content'].apply(lambda x: processing_text(x))
 
     return df
 

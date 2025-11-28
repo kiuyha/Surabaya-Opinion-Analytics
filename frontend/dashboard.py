@@ -124,7 +124,7 @@ def top_keywords(df: pd.DataFrame, title: str):
         st.info("No data available for this sentiment.")
         return
 
-    all_keywords = ' '.join(df['processed_text'].astype(str).fillna('')).split()
+    all_keywords = ' '.join(df['processed_text_hard'].astype(str).fillna('')).split()
     word_counts = Counter(all_keywords)
     df_keywords = pd.DataFrame(word_counts.most_common(10), columns=['Keyword', 'Count'])
 

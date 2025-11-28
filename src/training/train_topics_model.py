@@ -8,7 +8,6 @@ from sklearn.preprocessing import normalize
 from sklearn.metrics import silhouette_score
 from src.core import log, supabase, config
 from src.utils.gemini_api import labeling_cluster
-from src.preprocess import processing_text
 from typing import Tuple, Dict, List, Any, cast
 from huggingface_hub import HfApi
 import numpy as np
@@ -359,8 +358,8 @@ if __name__ == "__main__":
 
         log.info('Loading data from Supabase...')
 
-        tweets_data = fetch_all_rows('tweets', ['id', 'text_content'])
-        reddit_data = fetch_all_rows('reddit_comments', ['id', 'text_content'])
+        tweets_data = fetch_all_rows('tweets', ['id', 'processed_text_hard'])
+        reddit_data = fetch_all_rows('reddit_comments', ['id', 'processed_text_hard'])
 
         if not tweets_data and not reddit_data:
             raise Exception("No data found in Supabase (tweets or reddit)")
@@ -380,17 +379,15 @@ if __name__ == "__main__":
         df = pd.concat(dfs_to_concat, ignore_index=True)
         log.info(f"Training on {len(df)} records...")
         
-        df['processed_text'] = df['text_content'].apply(processing_text)
-
         # Load the vectorized text data
-        text_model, vectors = text_pipeline(df['processed_text'])
+        text_model, vectors = text_pipeline(df['processed_text_hard'])
 
         # Find the best K using the silhouette method
         # min_k because if it too small the topic become too generic and max_k because if it too large the topic become too specific
         kmeans_model, keywords, labels, junk_topics_id = find_and_train_optimal_model(
             vectors,
             text_model,
-            df['processed_text'].to_list(),
+            df['processed_text_hard'].to_list(),
             min_k=3,
             max_k=8
         )
