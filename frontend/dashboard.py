@@ -58,6 +58,7 @@ def show(df: pd.DataFrame):
         selected_topic = st.selectbox(
             "Filter by Topic",
             ["All", *df["topic"].unique()],
+            format_func=lambda x: "General" if x is None else x,
             index=0
         )
     
@@ -70,7 +71,10 @@ def show(df: pd.DataFrame):
         df = df[df["posted_at"] < end_ts]
     
     if selected_topic != "All":
-        df = df[df["topic"] == selected_topic]
+        if pd.isna(selected_topic):
+            df = df[df["topic"].isnull()]
+        else:
+            df = df[df["topic"] == selected_topic]
 
     col_pos, col_neg = st.columns(2, border=True)
 
@@ -93,7 +97,7 @@ def show(df: pd.DataFrame):
         """)
 
     with top_topic:
-        most_common_topic = df["topic"].mode()[0]
+        most_common_topic = df["topic"].mode()[0] if df["topic"].mode().shape[0] > 0 else "General"
         st.html(f"""
             <div class="metric-card">
                 <div class="metric-label">Top Trending Topic</div>
