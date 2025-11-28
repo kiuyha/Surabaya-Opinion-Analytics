@@ -78,7 +78,7 @@ def extract_new_reddit_comment(comments: list)-> list[ScrapedRedditDict]:
         {
             "id": p.get("id"),
             "username": p.get("author", ""),
-            "text_content": p.get("title", "") + " " + p.get("selftext", ""),
+            "text_content": p.get("title", "") + " " + p.get("body", ""),
             "posted_at": datetime.fromtimestamp(int(p.get("created_utc"))).isoformat(),
             "upvote_count": p.get("ups"),
             "downvote_count": p.get("downs"),
