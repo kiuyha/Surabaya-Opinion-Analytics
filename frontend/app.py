@@ -35,7 +35,7 @@ def fetch_all_rows(table_name):
 
     return all_data
 
-@st.cache_data(ttl=10000)
+@st.cache_data(ttl=None, show_spinner="Loading and processing datasets...")
 def load_data():
     tweets_data = fetch_all_rows('tweets')
     reddit_data = fetch_all_rows('reddit_comments')
