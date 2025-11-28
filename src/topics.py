@@ -24,6 +24,10 @@ print(f"FastText model loaded with vector size {fasttext_model.vector_size}.")
 
 def predict_topics(texts: pd.Series) -> List[Optional[int]]:
     _, vectors = text_pipeline(texts, model=fasttext_model)
+
+    if kmeans_model.cluster_centers_.dtype != np.float32:
+        kmeans_model.cluster_centers_ = kmeans_model.cluster_centers_.astype(np.float32)
+
     raw_predictions = kmeans_model.predict(vectors.astype(np.float32))
     
     # Filter predictions: Return ID if valid, None if junk
