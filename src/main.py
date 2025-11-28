@@ -1,5 +1,5 @@
 """
-This file only run for daily pipeline to get new tweets. For the monthly retrain, use training/train_kmeans.py
+This file only run for weekly pipeline to get new tweets. For the monthly retrain, use training/train_kmeans.py
 """
 from datetime import datetime, timezone
 import numpy as np
@@ -14,7 +14,7 @@ if __name__ == "__main__":
     # Check if training is in progress
     response = supabase.table('app_config').select('value').eq('key', 'training-in-progress').single().execute()
     if response.data['value']:
-        log.info("Training in progress, skipping daily pipeline.")
+        log.info("Training in progress, skipping weekly pipeline.")
         exit()
 
     # Update last-updated
@@ -81,7 +81,10 @@ if __name__ == "__main__":
             .drop(['processed_text_light', 'processed_text_hard', 'source_type'], axis=1)
             .dropna(axis=1, how='all')
             .convert_dtypes()
-            .replace(np.nan, None)
+            .replace({
+                pd.NA: None,
+                np.nan: None
+            })
         )
         
         log.info(f"Uploading {len(tweets_to_upload)} tweets...")
@@ -94,7 +97,10 @@ if __name__ == "__main__":
             .drop(['processed_text_light', 'processed_text_hard', 'source_type'], axis=1)
             .dropna(axis=1, how='all')
             .convert_dtypes()
-            .replace(np.nan, None)
+            .replace({
+                pd.NA: None,
+                np.nan: None
+            })
         )
 
         log.info(f"Uploading {len(reddit_to_upload)} reddit comments...")
