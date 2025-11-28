@@ -37,6 +37,7 @@ def show(df: pd.DataFrame):
         selected_topic = st.selectbox(
             "Filter by Topic",
             ["All", *df["topic"].unique()],
+            format_func=lambda x: "General" if x is None else x,
             index=0
         )
         selected_type = st.selectbox(
@@ -49,7 +50,10 @@ def show(df: pd.DataFrame):
         df = df[df["sentiment"] == selected_sentiment]
 
     if selected_topic != "All":
-        df = df[df["topic"] == selected_topic]
+        if pd.isna(selected_topic):
+            df = df[df["topic"].isnull()]
+        else:
+            df = df[df["topic"] == selected_topic]
     
     if selected_type != "All":
         df = df[df["source_type"] == selected_type]
@@ -132,6 +136,7 @@ def show(df: pd.DataFrame):
                 
                 # Container height ensures uniform grid
                 with st.container(border=True, height=280):
+                    fullname = row.get('fullname')
                     username = row.get('username', 'Unknown')
                     content = row.get('text_content', 'No content available.')
                     sentiment = row.get('sentiment', 'neutral')
@@ -178,16 +183,15 @@ def show(df: pd.DataFrame):
                             for metric, value in metrics.items()
                         ]
                     )
-
                     st.html(f"""
                         <div style="height: 100%; display: flex; flex-direction: column;">
                             <div class="card-header">
                                 <div style="display: flex; gap: 1px; flex-direction: column;">
                                     <span class="fullname" style="font-weight: bold; font-size: 16px;">
-                                        {row.get('fullname') if row.get('fullname') else username}
+                                        {fullname if not pd.isna(fullname) else username}
                                     </span>
 
-                                    <span class="username">{username if row.get('fullname') else ""}</span>
+                                    <span class="username">{username if not pd.isna(fullname) else ""}</span>
                                 </div>
                                 
                                 <span class="platform-badge" style="background-color: {style['bg']}; color: {style['color']};">

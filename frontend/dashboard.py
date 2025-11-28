@@ -4,7 +4,7 @@ import plotly.express as px
 import matplotlib.pyplot as plt
 from wordcloud import WordCloud
 from collections import Counter
-
+from matplotlib.figure import Figure
 
 def show(df: pd.DataFrame):
     st.header("Dashboard Page")
@@ -158,10 +158,11 @@ def top_keywords(df: pd.DataFrame, title: str):
             prefer_horizontal=0.9
         ).generate_from_frequencies(word_counts)
 
-        fig, ax = plt.subplots(figsize=(5, 3.5)) 
+        fig = Figure(figsize=(5, 3.5))
+        ax = fig.subplots()
         ax.imshow(wc, interpolation='bilinear')
         ax.axis("off")
-        plt.tight_layout(pad=0)
+        fig.tight_layout(pad=0)
         
         st.pyplot(fig, width='stretch')
     
