@@ -183,9 +183,9 @@ def show(df: pd.DataFrame):
                         <div style="height: 100%; display: flex; flex-direction: column;">
                             <div class="card-header">
                                 <div style="display: flex; gap: 1px; flex-direction: column;">
-                                    <span class="fullname" style="font-weight: bold; font-size: 16px;">{
-                                        f"{row['fullname']}" if row.get('fullname') else username
-                                    } </span>
+                                    <span class="fullname" style="font-weight: bold; font-size: 16px;">
+                                        {row.get('fullname') if row.get('fullname') else username}
+                                    </span>
 
                                     <span class="username">{username if row.get('fullname') else ""}</span>
                                 </div>
