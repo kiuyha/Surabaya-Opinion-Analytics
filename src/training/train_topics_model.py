@@ -358,7 +358,7 @@ if __name__ == "__main__":
 
         log.info('Loading data from Supabase...')
 
-        tweets_data = fetch_all_rows('tweets', ['id', 'processed_text_hard'])
+        tweets_data = fetch_all_rows('tweets', ['id', 'text_content', 'processed_text_hard'])
         reddit_data = fetch_all_rows('reddit_comments', ['id', 'processed_text_hard'])
 
         if not tweets_data and not reddit_data:

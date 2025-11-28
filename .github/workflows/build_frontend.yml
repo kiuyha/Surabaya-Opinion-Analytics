@@ -14,9 +14,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
-      
-      - name: run deploy.py
-        run: python deploy.py
 
       - name: Push entire repository to Hugging Face Space
         run: |
