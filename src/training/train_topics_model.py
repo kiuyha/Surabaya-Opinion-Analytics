@@ -326,7 +326,7 @@ def push_models_to_hf(kmeans_model: KMeans, text_model: FastText, topic_map: Dic
         except Exception as e:
             log.error(f"An error occurred while uploading to Hugging Face: {e}")
 
-def fetch_all_rows(table_name, columns):
+def fetch_all_rows(table_name: str, columns: List[str]):
     """Helper to fetch all rows from a table using pagination."""
     log.info(f'Loading {table_name} from Supabase...')
     all_data = []
