@@ -40,7 +40,7 @@ def create_cluster_plot(
         y='y',
         color='topic_name',  # Use the new name column for color
         hover_data=['text_content'],
-        title="Tweet Clusters Visualization - Surabaya Topics",
+        title="Data Clusters Visualization - Surabaya Topics",
         labels={'topic_name': 'Topic'},
         color_discrete_map={'Junk/Noise': "lightgrey"}
     )
