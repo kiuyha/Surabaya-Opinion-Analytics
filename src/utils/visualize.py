@@ -49,7 +49,7 @@ def create_cluster_plot(
     fig.update_traces(marker=dict(opacity=0.6))
     
     if save:
-        output_path = f"{VISUALIZATION_DIR}/tweet_clusters.html"
+        output_path = f"{VISUALIZATION_DIR}/plot_clusters.html"
         fig.write_html(output_path)
         log.info(f"Successfully exported interactive plot to '{output_path}'")
 
