@@ -57,9 +57,9 @@ if __name__ == "__main__":
 
     dfs_to_concat = []
     if not df_tweets.empty:
-        dfs_to_concat.append(df_tweets)
+        dfs_to_concat.append(df_tweets.drop_duplicates(subset=['id'], keep='last'))
     if not df_reddit.empty:
-        dfs_to_concat.append(df_reddit)
+        dfs_to_concat.append(df_reddit.drop_duplicates(subset=['id'], keep='last'))
 
     full_df = pd.concat(dfs_to_concat, ignore_index=True)
 
