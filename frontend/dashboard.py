@@ -105,6 +105,7 @@ def show(df: pd.DataFrame):
         st.subheader("Sentiment Distribution")
         make_pie_plot(df["sentiment"].value_counts(), ["positive", "negative", "neutral"], 'count')
 
+@st.fragment
 def top_keywords(df: pd.DataFrame, title: str):
     with st.container():
         st.subheader(title)
@@ -153,7 +154,7 @@ def top_keywords(df: pd.DataFrame, title: str):
     elif view_type == 'Cloud':
         wc = WordCloud(
             width=500, 
-            height=300, 
+            height=300,
             background_color="white",
             prefer_horizontal=0.9
         ).generate_from_frequencies(word_counts)

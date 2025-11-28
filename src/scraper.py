@@ -74,15 +74,16 @@ def extract_new_tweets_and_next_link(html_content: str)-> Tuple[list[ScrapedTwee
 
 def extract_new_reddit_comment(comments: list)-> list[ScrapedRedditDict]:
     base_url = "https://www.reddit.com"
+
     scraped_comments: list[ScrapedRedditDict] = [
         {
             "id": p.get("id"),
             "username": p.get("author", ""),
             "text_content": p.get("title", "") + " " + p.get("body", ""),
             "posted_at": datetime.fromtimestamp(int(p.get("created_utc"))).isoformat(),
-            "upvote_count": p.get("ups"),
-            "downvote_count": p.get("downs"),
-            "permalink": base_url + p.get("permalink", "")
+            "upvote_count": p.get("ups", 0),
+            "downvote_count": p.get("downs", 0),
+            "permalink": f"{base_url}{p.get('permalink')}" if p.get("permalink") else None
         }
         for p in comments
     ]

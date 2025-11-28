@@ -78,7 +78,7 @@ if __name__ == "__main__":
         processed_tweets = full_df[full_df['source_type'] == 'twitter'].copy()
         tweets_to_upload = (
             processed_tweets
-            .drop(['processed_text_light', 'processed_text_hard', 'source_type'], axis=1)
+            .drop(['source_type'], axis=1)
             .dropna(axis=1, how='all')
             .convert_dtypes()
             .replace({
@@ -94,7 +94,7 @@ if __name__ == "__main__":
         processed_reddit = full_df[full_df['source_type'] == 'reddit'].copy()
         reddit_to_upload = (
             processed_reddit
-            .drop(['processed_text_light', 'processed_text_hard', 'source_type'], axis=1)
+            .drop(['source_type'], axis=1)
             .dropna(axis=1, how='all')
             .convert_dtypes()
             .replace({

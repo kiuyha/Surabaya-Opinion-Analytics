@@ -1,0 +1,24 @@
+from src.training.train_topics_model import fetch_all_rows
+from src.core import supabase
+from src.preprocess import processing_text
+
+def update_preprocess_text(table_name):
+    # fetch all data
+    all_data = fetch_all_rows(table_name, 'text_content')
+
+    # update preprocess
+    all_data = [
+        {
+            'processed_text_light': processing_text(data['text_content'], level='light'),
+            'processed_text_hard': processing_text(data['text_content'], level='hard')
+        }
+        for data in all_data
+    ]
+
+    # save to supabase
+    supabase.table(table_name).upsert(all_data).execute()
+    return
+
+if __name__ == "__main__":
+    update_preprocess_text('tweets')
+    update_preprocess_text('reddit_comments')

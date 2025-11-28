@@ -98,13 +98,10 @@ def show(df: pd.DataFrame):
             font-size: 14px;
             line-height: 1.4;
             display: -webkit-box;
-            -webkit-line-clamp: 5; /* Limit to 5 lines */
-            -webkit-box-orient: vertical;
             overflow: hidden;
             margin-bottom: 10px;
             color: var(--text-color);
             opacity: 0.9;
-            flex: ;
         }
         .meta-row {
             display: flex;
@@ -116,6 +113,39 @@ def show(df: pd.DataFrame):
             display: flex;
             gap: 4px;
             align-items: center;
+        }
+        .toggle-checkbox {
+            display: none;
+        }
+        
+        .content-text {
+            display: -webkit-box;
+            -webkit-line-clamp: 3; /* Show only 3 lines */
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            transition: all 0.3s ease;
+            margin-bottom: 10px;
+        }
+
+        .toggle-label {
+            font-size: 0.8rem;
+            color: var(--primary-color);
+            cursor: pointer;
+            font-weight: bold;
+            text-decoration: underline;
+        }
+
+        .toggle-checkbox:checked ~ .content-text {
+            -webkit-line-clamp: unset;
+            height: auto;
+        }
+
+        .toggle-checkbox:checked ~ .toggle-label::after {
+            content: "Show Less";
+        }
+        
+        .toggle-checkbox:not(:checked) ~ .toggle-label::after {
+            content: "Show More";
         }
     </style>
     """, unsafe_allow_html=True)
@@ -143,6 +173,8 @@ def show(df: pd.DataFrame):
                     topic = row.get('topic')
                     
                     metrics_html = ""
+                    link_url = ""
+                    link_label = ""
                     if source_type == "Twitter":
                         metrics = {
                             "Likes": row.get('like_count', 0) or 0,
@@ -161,10 +193,6 @@ def show(df: pd.DataFrame):
                         link_url = row.get('permalink', '#')
                         link_label = "Open Reddit"
                         
-                    else:
-                        link_url = "#"
-                        link_label = "Link"
-
                     # Sentiment Color
                     sent_color = {
                         "positive": "#28a745", 
@@ -172,22 +200,22 @@ def show(df: pd.DataFrame):
                         "neutral": "#6c757d"
                     }.get(sentiment, "#6c757d")
 
-                    metrics_html = "".join(
-                        [
-                            f"""
-                                <div class="meta-item">
-                                    <img src={METRICS_ICONS.get(metric)} width="16" height="16"/> 
-                                    <span>{value}</span>
-                                </div>
-                            """
-                            for metric, value in metrics.items()
-                        ]
-                    )
+                    metrics_html = "".join([
+                        f"""
+                            <div class="meta-item">
+                                <img src={METRICS_ICONS.get(metric)} width="16" height="16"/> 
+                                <span>{value:,.0f}</span>
+                            </div>
+                        """
+
+                        for metric, value in metrics.items()
+                    ])
+                    
                     st.html(f"""
                         <div style="height: 100%; display: flex; flex-direction: column;">
                             <div class="card-header">
-                                <div style="display: flex; gap: 1px; flex-direction: column;">
-                                    <span class="fullname" style="font-weight: bold; font-size: 16px;">
+                                <div style="display: flex; flex-direction: column;">
+                                    <span class="fullname" style="font-weight: bold; font-size: 18px;">
                                         {fullname if not pd.isna(fullname) else username}
                                     </span>
 
@@ -211,8 +239,14 @@ def show(df: pd.DataFrame):
                                 </div>
                             </div>
                             
-                            <div class="content-text" title="{content}">
-                                {content}
+                            <div style="display: flex; flex-direction: column;">
+                                <input type="checkbox" id="toggle-{row['id']}" class="toggle-checkbox">
+                                
+                                <div class="content-text">
+                                    {content}
+                                </div>
+
+                                <label for="toggle-{row['id']}" class="toggle-label"></label>
                             </div>
 
                             <div class="meta-row">
@@ -221,7 +255,8 @@ def show(df: pd.DataFrame):
                         </div>
                     """)
 
-                    st.link_button(link_label, link_url, use_container_width=True)
+                    if link_url:
+                        st.link_button(link_label, link_url, use_container_width=True)
 
     # The "Load More" Button
     if st.session_state.view_limit < len(df):
