@@ -135,13 +135,15 @@ def calculate_separation_score(top_keywords_by_topic: List[List[str]], text_mode
     return float(np.mean(separation_scores))
 
 def get_keywords_from_labels(
-    labels: np.ndarray,
+    labels: np.ndarray|List[int],
     original_texts: List[str],
     top_n: int = 10,
-    ignore_label: int|None = None
+    ignore_label: int|None = None,
+    ngram_range: Tuple[int, int] = (1, 1)
 ) -> List[List[str]]:
     """
-    Extracts top keywords for each cluster using TF-IDF. Each cluster's documents are aggregated into one "document" for TF-IDF analysis.
+    Extracts top keywords for each cluster using TF-IDF.
+    Each cluster's documents are aggregated into one "document" for TF-IDF analysis.
     """
     # Aggregate text for each cluster
     cluster_texts = {}
@@ -168,7 +170,7 @@ def get_keywords_from_labels(
         return []
 
     try:
-        vectorizer = TfidfVectorizer(max_features=1000)
+        vectorizer = TfidfVectorizer(max_features=1000, ngram_range=ngram_range)
         tfidf_matrix = cast(np.ndarray, vectorizer.fit_transform(corpus))
         feature_names = vectorizer.get_feature_names_out()
         
@@ -193,7 +195,7 @@ def find_and_train_optimal_model(
     max_k: int = 15,
     abs_coherence_threshold: float = 0.45,  # The absolute quality floor
     rel_coherence_drop: float = 0.80      # Flag if score is less than 80% of the median
-) -> Tuple[KMeans, List[List[str]], List[float] ,List[int]]: 
+) -> Tuple[KMeans, np.ndarray, List[int]]: 
     """
     Finds the optimal K using final score: (coherence score, separation score) and then trains the optimal K-Means model.
     """
@@ -248,7 +250,7 @@ def find_and_train_optimal_model(
         log.info(f"Identified {len(junk_topic_ids)} junk topic(s): {junk_topic_ids}")
     else:
         log.info("All topics are above the quality threshold. No topics will be removed.")
-    return best_result['model'], best_result['keywords'], best_result['labels'], junk_topic_ids
+    return best_result['model'], best_result['labels'], junk_topic_ids
 
 def save_to_supabase(
     keywords_by_topic: List[List[str]], 
@@ -384,7 +386,7 @@ if __name__ == "__main__":
 
         # Find the best K using the silhouette method
         # min_k because if it too small the topic become too generic and max_k because if it too large the topic become too specific
-        kmeans_model, keywords, labels, junk_topics_id = find_and_train_optimal_model(
+        kmeans_model, labels, junk_topics_id = find_and_train_optimal_model(
             vectors,
             text_model,
             df['processed_text_hard'].to_list(),
@@ -401,11 +403,15 @@ if __name__ == "__main__":
         if junk_topics_id:
             log.info(f"Re-labeling junk topics {junk_topics_id} to -1...")
             df['cluster_label'] = df['cluster_label'].replace(junk_topics_id, -1)
-
-        clean_keywords = [
-            keyword_list for i, keyword_list in enumerate(keywords) 
-            if i not in junk_topics_id
-        ]
+        
+        log.info("Regenerating keywords with N-Grams (1, 3) for rich topic labeling...")
+        clean_keywords = get_keywords_from_labels(
+            df['cluster_label'].to_list(),
+            df['processed_text_hard'].to_list(),
+            top_n=50,
+            ignore_label=-1,
+            ngram_range=(1, 3)
+        )
 
         USE_GEMINI_API = config.env.get('USE_GEMINI_API', False)
         if USE_GEMINI_API:
