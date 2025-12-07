@@ -4,8 +4,8 @@ import pandas as pd
 
 MODEL_NAME = "mdhugol/indonesia-bert-sentiment-classification"
 
-tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
 model = AutoModelForSequenceClassification.from_pretrained(MODEL_NAME)
+tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
 
 sentiment_pipeline = pipeline(
     task="sentiment-analysis",  # type: ignore
