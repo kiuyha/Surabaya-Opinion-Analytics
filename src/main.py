@@ -3,7 +3,7 @@ This file only run for weekly pipeline to get new tweets. For the monthly retrai
 """
 from datetime import datetime, timezone
 import numpy as np
-from src.ner import extract_entities_batch
+from src.ner import extract_entities_batch, save_ner_to_supabase
 from src.sentiment import predict_sentiment_batch
 from src.topics import predict_topics
 from .core import config, supabase, log
@@ -14,6 +14,7 @@ import pandas as pd
 if __name__ == "__main__":
     # Check if training is in progress
     response = supabase.table('app_config').select('value').eq('key', 'training-in-progress').single().execute()
+    
     if response.data['value']:
         log.info("Training in progress, skipping weekly pipeline.")
         exit()
@@ -77,27 +78,7 @@ if __name__ == "__main__":
     
     # Prepare entities for database
     log.info("Preparing entities for database...")
-    entities_to_save = [
-        {
-            'tweet_id': row.id if row.source_type == 'twitter' else None,
-            'reddit_comment_id': row.id if row.source_type == 'reddit' else None,
-            'entity_type': ent['entity_group'],
-            'entity_text': ent['word'],
-            'confidence_score': float(ent['score']),
-            'start_position': ent['start'],
-            'end_position': ent['end']
-        }
-        for row in full_df.itertuples()
-        for ent in row.entities
-    ]
-
-    # Save entities to database
-    if entities_to_save:
-        log.info(f"Uploading {len(entities_to_save)} entities...")
-        try:
-            supabase.table('entities').upsert(entities_to_save).execute()
-        except Exception as e:
-            log.error(f"Error uploading entities: {e}")
+    save_ner_to_supabase(full_df)
 
     # Save to database
     if not df_tweets.empty:

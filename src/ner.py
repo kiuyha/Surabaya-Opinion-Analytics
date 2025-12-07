@@ -1,6 +1,6 @@
 from transformers import pipeline, AutoModelForTokenClassification, AutoTokenizer
 import torch
-from typing import List, Dict
+from typing import List, Dict, cast
 from src.training.train_topics_model import fetch_all_rows
 from .core import log, supabase
 import pandas as pd
@@ -35,8 +35,6 @@ def extract_entities_batch(texts: pd.Series, batch_size: int = 16) -> List[List[
             ner_pipeline(
                 valid_texts,
                 batch_size=batch_size,
-                truncation=True,
-                max_length=512
             )
         )
         log.info(f"Extracted entities from {len(texts)} texts")
@@ -44,6 +42,29 @@ def extract_entities_batch(texts: pd.Series, batch_size: int = 16) -> List[List[
     except Exception as e:
         log.error(f"Error in NER extraction: {e}")
         return [[] for _ in texts]
+
+def save_ner_to_supabase(df: pd.DataFrame):
+    entities_to_save = [
+        {
+            'tweet_id': row.id if row.source_type == 'twitter' else None,
+            'reddit_comment_id': row.id if row.source_type == 'reddit' else None,
+            'entity_type': ent['entity_group'],
+            'entity_text': ent['word'],
+            'confidence_score': float(ent['score']),
+            'start_position': ent['start'],
+            'end_position': ent['end']
+        }
+        for row in df.itertuples()
+        for ent in cast(List[Dict], row.entities)
+    ]
+
+    # Save entities to database
+    if entities_to_save:
+        log.info(f"Uploading {len(entities_to_save)} entities...")
+        try:
+            supabase.table('entities').upsert(entities_to_save).execute()
+        except Exception as e:
+            log.error(f"Error uploading entities: {e}")
 
 if __name__ == "__main__":
     tweets_data = fetch_all_rows('tweets', ['id', 'processed_text_light'])
@@ -68,24 +89,4 @@ if __name__ == "__main__":
     log.info(f"Training on {len(df)} records...")
 
     df['entities'] = extract_entities_batch(df['processed_text_light'])
-    entities_to_save = [
-        {
-            'tweet_id': row.id if row.source_type == 'twitter' else None,
-            'reddit_comment_id': row.id if row.source_type == 'reddit' else None,
-            'entity_type': ent['entity_group'],
-            'entity_text': ent['word'],
-            'confidence_score': float(ent['score']),
-            'start_position': ent['start'],
-            'end_position': ent['end']
-        }
-        for row in df.itertuples()
-        for ent in row.entities
-    ]
-
-    # Save entities to database
-    if entities_to_save:
-        log.info(f"Uploading {len(entities_to_save)} entities...")
-        try:
-            supabase.table('entities').upsert(entities_to_save).execute()
-        except Exception as e:
-            log.error(f"Error uploading entities: {e}")
+    save_ner_to_supabase(df)
