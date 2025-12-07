@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import matplotlib.pyplot as plt
 from wordcloud import WordCloud
 from collections import Counter
 from matplotlib.figure import Figure

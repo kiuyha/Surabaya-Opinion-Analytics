@@ -1,6 +1,6 @@
 from supabase import Client
 import logging
-from typing import Any, List, Mapping
+from typing import Any, Mapping
 from src.utils.types import SearchConfigDict
 
 # Not using log from src/config.py because it will make a circular import
