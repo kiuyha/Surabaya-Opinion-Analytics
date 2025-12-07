@@ -1,6 +1,8 @@
+from email import generator
 from transformers import pipeline, AutoTokenizer, AutoModelForSequenceClassification
 from typing import List
 import pandas as pd
+from tqdm import tqdm
 
 MODEL_NAME = "mdhugol/indonesia-bert-sentiment-classification"
 
@@ -26,14 +28,22 @@ def predict_sentiment_batch(texts: pd.Series, batch_size: int = 16) -> List[str]
 
     # Filter out non-strings (handle NaNs) to prevent pipeline crash
     valid_texts = [t if t and isinstance(t, str) else "" for t in texts]
+    generator = (t for t in valid_texts)
 
     # The pipeline returns a generator/list of dicts: [{'label': 'LABEL_0', 'score': 0.9}, ...]
-    results = sentiment_pipeline(
-        valid_texts,
+    pipeline_iterator = sentiment_pipeline(
+        generator,
         batch_size=batch_size,
         truncation=True,
         max_length=512
     )
+
+    results = list(tqdm(
+        pipeline_iterator,
+        total=len(valid_texts), 
+        desc="NER Extraction",
+        unit="docs"
+    ))
 
     final_labels = [
         LABEL_MAP.get(res["label"], "neutral") 

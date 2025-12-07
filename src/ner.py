@@ -4,6 +4,7 @@ from typing import List, Dict, cast
 from src.training.train_topics_model import fetch_all_rows
 from .core import log, supabase
 import pandas as pd
+from tqdm import tqdm
 
 # Initialize model and tokenizer
 MODEL_NAME = "Kiuyha/surabaya-opinion-indobert-ner"
@@ -34,13 +35,20 @@ def extract_entities_batch(texts: pd.Series, batch_size: int = 16) -> List[List[
     try:
         # Filter out non-strings (handle NaNs) to prevent pipeline crash
         valid_texts = [t if t and isinstance(t, str) else "" for t in texts]
+        generator = (t for t in valid_texts)
 
-        results = ner_pipeline(
-            valid_texts,
-            batch_size=batch_size,
+        pipeline_iterator = ner_pipeline(
+            generator,
+            batch_size=batch_size
         )
+
+        results = list(tqdm(
+            pipeline_iterator,
+            total=len(valid_texts), 
+            desc="NER Extraction",
+            unit="docs"
+        ))
         
-        log.info(f"Extracted entities from {len(texts)} texts")
         return results
     except Exception as e:
         log.error(f"Error in NER extraction: {e}")
