@@ -39,8 +39,8 @@ def extract_entities_batch(texts: pd.Series, batch_size: int = 16) -> List[List[
             valid_texts,
             batch_size=batch_size,
             tokenizer_params={
-                truncation=True,
-                max_length=512
+                'truncation': True,
+                'max_length': 512
             }
         )
         
