@@ -28,7 +28,12 @@ def predict_sentiment_batch(texts: pd.Series, batch_size: int = 16) -> List[str]
     valid_texts = [t if isinstance(t, str) and t else "" for t in texts]
 
     # The pipeline returns a generator/list of dicts: [{'label': 'LABEL_0', 'score': 0.9}, ...]
-    results = sentiment_pipeline(valid_texts, batch_size=batch_size, truncation=True, max_length=512)
+    results = sentiment_pipeline(
+        valid_texts,
+        batch_size=batch_size,
+        truncation=True,
+        max_length=512
+    )
 
     final_labels = [
         LABEL_MAP.get(res["label"], "neutral") 
