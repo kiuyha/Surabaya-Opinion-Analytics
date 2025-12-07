@@ -38,10 +38,6 @@ def extract_entities_batch(texts: pd.Series, batch_size: int = 16) -> List[List[
         results = ner_pipeline(
             valid_texts,
             batch_size=batch_size,
-            tokenizer_params={
-                'truncation': True,
-                'max_length': 512
-            }
         )
         
         log.info(f"Extracted entities from {len(texts)} texts")
