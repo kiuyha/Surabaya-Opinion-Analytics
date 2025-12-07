@@ -9,7 +9,8 @@ load_dotenv()
 # Configure logging
 basicConfig(
     level=INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    force=True
 )
 log: Logger = getLogger(__name__)
 
