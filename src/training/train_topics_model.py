@@ -43,10 +43,10 @@ def text_pipeline(
         log.info("Number of CPU cores not detected. Defaulting to 4 cores...")
         cpu_core = 4
 
-    log.info(f"Training FastText model with vector_size={vector_size}...")
     if model:
         fasttext_model = model
     else:
+        log.info(f"Training FastText model with vector_size={vector_size}...")
         fasttext_model = FastText(
             tokenized_texts,
             vector_size=vector_size,
