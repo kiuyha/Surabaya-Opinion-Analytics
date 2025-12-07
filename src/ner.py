@@ -102,7 +102,7 @@ if __name__ == "__main__":
         dfs_to_concat.append(df_reddit)
     
     df = pd.concat(dfs_to_concat, ignore_index=True)
-    log.info(f"Training on {len(df)} records...")
+    log.info(f"NER on {len(df)} records...")
 
     df['entities'] = extract_entities_batch(df['processed_text_light'])
     save_ner_to_supabase(df)
