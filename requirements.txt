@@ -13,3 +13,4 @@ requests
 umap-learn
 joblib
 plotly
+lxml
