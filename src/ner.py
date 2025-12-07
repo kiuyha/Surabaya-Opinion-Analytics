@@ -30,13 +30,29 @@ def extract_entities_batch(texts: pd.Series, batch_size: int = 16) -> List[List[
         log.warning("NER pipeline not available, returning empty results")
         return [[] for _ in texts]
     try:
-        valid_texts = [t if isinstance(t, str) and t else "" for t in texts]
-        results = list(
-            ner_pipeline(
-                valid_texts,
-                batch_size=batch_size,
+        results = []
+        for i in range(0, len(texts), batch_size):
+            raw_batch = texts[i:i + batch_size]
+
+            # Truncate the text to 1500 characters (eq to 512 tokens) since ner pipeline not accept truncate parameter
+            batch = [
+                t[:1500]
+
+                if t and isinstance(t, str)
+                else ""
+                for t in raw_batch
+            ]
+            
+            batch_results = ner_pipeline(
+                batch,
+                batch_size=batch_size
             )
-        )
+            
+            if len(batch) == 1:
+                results.append(batch_results)
+            else:
+                results.extend(batch_results)
+                
         log.info(f"Extracted entities from {len(texts)} texts")
         return results
     except Exception as e:

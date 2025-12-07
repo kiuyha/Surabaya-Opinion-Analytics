@@ -25,7 +25,7 @@ def predict_sentiment_batch(texts: pd.Series, batch_size: int = 16) -> List[str]
     """
 
     # Filter out non-strings (handle NaNs) to prevent pipeline crash
-    valid_texts = [t if isinstance(t, str) and t else "" for t in texts]
+    valid_texts = [t if t and isinstance(t, str) else "" for t in texts]
 
     # The pipeline returns a generator/list of dicts: [{'label': 'LABEL_0', 'score': 0.9}, ...]
     results = sentiment_pipeline(
