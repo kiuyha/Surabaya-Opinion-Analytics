@@ -133,7 +133,7 @@ def scrap_nitter(search_query: str, depth: int = -1, time_budget: int = -1)-> li
         'Upgrade-Insecure-Requests': '1',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
     }
-    next_link = f'?q={quote_plus(search_query)}&f=tweets'
+    next_link = f'?f=tweets&q={quote_plus(search_query)}&f=tweets'
     scraped_data = []
     start_time = time.time()
 
