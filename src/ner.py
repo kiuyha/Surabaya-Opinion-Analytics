@@ -59,7 +59,7 @@ def save_ner_to_supabase(df: pd.DataFrame):
         {
             'tweet_id': row.id if row.source_type == 'twitter' else None,
             'reddit_comment_id': row.id if row.source_type == 'reddit' else None,
-            'entity_type': ent['entity_group'],
+            'entity_label': ent['entity_group'],
             'entity_text': ent['word'],
             'confidence_score': float(ent['score']),
             'start_position': ent['start'],
