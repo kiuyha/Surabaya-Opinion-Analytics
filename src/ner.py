@@ -89,11 +89,11 @@ if __name__ == "__main__":
     dfs_to_concat = []
     
     if not df_tweets.empty:
-        df_tweets['source_type'] = 'tweets'
+        df_tweets['source_type'] = 'twitter'
         dfs_to_concat.append(df_tweets)
     
     if not df_reddit.empty:
-        df_reddit['source_type'] = 'reddit_comments'
+        df_reddit['source_type'] = 'reddit'
         dfs_to_concat.append(df_reddit)
     
     df = pd.concat(dfs_to_concat, ignore_index=True)
