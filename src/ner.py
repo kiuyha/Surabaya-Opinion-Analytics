@@ -50,9 +50,16 @@ def extract_entities_batch(texts: pd.Series, batch_size: int = 16) -> List[List[
         ))
         
         return [
-            res.replace('##', '') if res.startswith('##') else res
-            for res in results
+            [
+                {
+                    **ent,
+                    'word' : ent['word'].replace("##", ""),
+                }
+                for ent in result
+            ]
+            for result in results
         ]
+    
     except Exception as e:
         log.error(f"Error in NER extraction: {e}")
         return [[] for _ in texts]
