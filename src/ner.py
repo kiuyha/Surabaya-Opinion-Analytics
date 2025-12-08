@@ -149,7 +149,10 @@ def save_ner_to_supabase(df: pd.DataFrame):
     if entities_to_save:
         log.info(f"Uploading {len(entities_to_save)} entities...")
         try:
-            supabase.table('entities').upsert(entities_to_save).execute()
+            supabase.table('entities').upsert(
+                entities_to_save,
+                on_conflict='tweet_id, reddit_comment_id, text, start'
+            ).execute()
         except Exception as e:
             log.error(f"Error uploading entities: {e}")
 
