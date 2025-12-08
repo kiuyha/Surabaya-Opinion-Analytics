@@ -17,7 +17,7 @@ tokenizer = AutoTokenizer.from_pretrained(
 try:
     log.info(f"Loading NER model from {MODEL_NAME}...")
     ner_pipeline = pipeline(
-        task="ner", # type: ignore
+        task="ner",  # type: ignore
         model=MODEL_NAME,
         tokenizer=tokenizer,
         aggregation_strategy="simple",

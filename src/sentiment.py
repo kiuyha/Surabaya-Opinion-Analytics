@@ -17,7 +17,7 @@ LABEL_MAP = {
 try:
     log.info(f"Loading sentiment model from {MODEL_NAME}...")
     sentiment_pipeline = pipeline(
-        task="sentiment-analysis",  # type: ignore
+        task="sentiment-analysis", # type: ignore
         model=model,
         tokenizer=tokenizer,
         device=0 if torch.cuda.is_available() else -1

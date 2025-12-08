@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import html
 
 N_COLS = 3
 ITEMS_TO_ADD = 15
@@ -25,44 +26,122 @@ SOURCE_STYLES = {
         "label": "Reddit"
     }
 }
+ENTITY_COLORS = {
+    "PERSON": "#e86a56",
+    "ORG": "#75f85b",
+    "LOC": "#508ae9",
+    "LOCATION": "#a0c4ff",
+    "DEFAULT": "#abaeb1"
+}
 
-def show(df: pd.DataFrame):
-    with st.container(horizontal=True):
-        selected_sentiment = st.selectbox(
-            "Filter by Sentiment",
-            ["All", "positive", "negative", "neutral"],
-            format_func=lambda x: x.title(),
-            index=0,
-        )
-        selected_topic = st.selectbox(
-            "Filter by Topic",
-            ["All", *df["topic"].unique()],
-            format_func=lambda x: "General" if x is None else x,
-            index=0
-        )
-        selected_type = st.selectbox(
-            "Filter by Source Type",
-            ["All", *df["source_type"].unique()],
-            index=0
-        )
-
-    if selected_sentiment != "All":
-        df = df[df["sentiment"] == selected_sentiment]
-
-    if selected_topic != "All":
-        if pd.isna(selected_topic):
-            df = df[df["topic"].isnull()]
-        else:
-            df = df[df["topic"] == selected_topic]
+def highlight_entities(text, entities_df):
+    if not text:
+        return "No text available."
     
-    if selected_type != "All":
-        df = df[df["source_type"] == selected_type]
+    # Sort entities by start position to process linearly
+    entities = entities_df.dropna(subset=['entity_start', 'entity_end']).sort_values('entity_start')
+    
+    html_output = []
+    current_pos = 0
+    
+    for _, ent in entities.iterrows():
+        start = int(ent['entity_start'])
+        end = int(ent['entity_end'])
+        label = ent.get('entity_label', 'UNKNOWN')
+        conf = ent.get('entity_confidence_score', 0.0)
+        
+        if start > current_pos:
+            html_output.append(html.escape(text[current_pos:start]))
+        
+        color = ENTITY_COLORS.get(label, ENTITY_COLORS["DEFAULT"])
+        tooltip = f"Label: {label} | Confidence: {conf:.2%}"
+        
+        entity_html = f"""
+        <span style="display: inline-flex; flex-direction: column; align-items: center; vertical-align: text-top; margin: 0 2px; line-height: 1;" title="{tooltip}">
+            <span style="border-bottom: 4px solid {color}; padding-bottom: 1px; font-weight: 500;">
+                {html.escape(text[start:end])}
+            </span>
+            <span style="font-size: 0.8em; font-weight: bold; text-transform: uppercase; margin-top: 2px; letter-spacing: 0.5px;">
+                {label}
+            </span>
+        </span>
+        """
+        html_output.append(entity_html)
+        current_pos = end
+        
+    # 3. Append remaining text
+    if current_pos < len(text):
+        html_output.append(html.escape(text[current_pos:]))
+        
+    return "".join(html_output)
 
+def close_dialog():
+    st.session_state.ner_idx = 0
+    st.session_state.dialog_open = False
+
+@st.dialog("Entity Analysis (NER)", width="large", on_dismiss=close_dialog)
+def ner_dialog(df_unique: pd.DataFrame, full_df: pd.DataFrame):
+    current_idx = st.session_state.ner_idx
+
+    # Boundary checks
+    if current_idx < 0:
+        current_idx = 0
+    if current_idx >= len(df_unique):
+        current_idx = len(df_unique) - 1
+    
+    # Get Data for current view
+    row = df_unique.iloc[current_idx]
+    tweet_id = row['id']
+    text = row.get('processed_text_light', '')
+    tweet_entities = full_df[full_df['id'] == tweet_id]
+
+    col_prev, col_info, col_next = st.columns([1, 4, 1], vertical_alignment="center")
+    
+    with col_prev:
+        if st.button("← Previous", disabled=(current_idx <= 0), width="stretch"):
+            st.session_state.ner_idx -= 1
+            st.rerun()
+            
+    with col_info:
+        st.markdown(f"<div style='text-align: center; color: gray;'>Record {current_idx + 1} of {len(df_unique)}</div>", unsafe_allow_html=True)
+
+    with col_next:
+        if st.button("Next →", disabled=(current_idx >= len(df_unique) - 1), width="stretch"):
+            st.session_state.ner_idx += 1
+            st.rerun()
+
+    styled_text = highlight_entities(text, tweet_entities)
+    
+    st.html(f"""
+    <div style="font-family: sans-serif; font-size: 16px; line-height: 1.8; padding: 15px; border: 1px solid #ddd; border-radius: 8px; background-color: var(--secondary-background-color);">
+        {styled_text}
+    </div>
+    """)
+    
+    st.caption("Hover over highlighted entities to see confidence scores.")
+
+    # Show raw table of entities below
+    with st.expander("View Entity Data Table"):
+        if not tweet_entities.empty:
+            cols_to_show = ['entity_text', 'entity_label', 'entity_confidence_score', 'entity_start', 'entity_end']
+            # Filter columns that actually exist
+            available_cols = [c for c in cols_to_show if c in tweet_entities.columns]
+            st.dataframe(tweet_entities[available_cols].sort_values('entity_start'), hide_index=True, width='stretch')
+        else:
+            st.info("No entities detected in this record.")
+
+def show(df: pd.DataFrame, df_unique: pd.DataFrame):
     if 'view_limit' not in st.session_state:
         st.session_state.view_limit = ITEMS_TO_ADD
 
+    if 'ner_idx' not in st.session_state:
+        st.session_state.ner_idx = 0
+    
+    if 'dialog_open' not in st.session_state:
+        st.session_state.dialog_open = False
+    
     # Slice the dataframe to get only the rows we want to show right now
-    visible_df = df.iloc[:st.session_state.view_limit]
+    visible_df = df_unique.iloc[:st.session_state.view_limit]
 
     st.markdown("""
     <style>
@@ -159,7 +238,9 @@ def show(df: pd.DataFrame):
         batch = visible_df.iloc[i:i + N_COLS]
         
         # Iterate through columns and dataframe rows simultaneously
-        for col, (_, row) in zip(cols, batch.iterrows()):
+        for col, (idx, row) in zip(cols, batch.iterrows()):
+            absolute_index = i + list(batch.index).index(idx)
+
             with col:
                 source_type = row.get('source_type', 'unknown')
                 style = SOURCE_STYLES.get(source_type)
@@ -255,22 +336,32 @@ def show(df: pd.DataFrame):
                         </div>
                     """)
 
-                    if link_url:
-                        st.link_button(link_label, link_url, use_container_width=True)
+                    b_col1, b_col2 = st.columns(2)
+                    with b_col1:
+                        if st.button("NER", key=f"ner_{row['id']}", width='stretch'):
+                            st.session_state.ner_idx = absolute_index
+                            st.session_state.dialog_open = True
+                            st.rerun()
+                    
+                    with b_col2:
+                         if link_url:
+                            st.link_button(link_label, link_url, width='stretch')
 
     # The "Load More" Button
-    if st.session_state.view_limit < len(df):
+    if st.session_state.view_limit < len(df_unique):
         st.divider()
         _, col_load_2, _ = st.columns([1, 2, 1])
         with col_load_2:
-            if st.button(f"Load More ({len(df) - st.session_state.view_limit} remaining)", type="primary", use_container_width=True):
+            if st.button(f"Load More ({len(df_unique) - st.session_state.view_limit} remaining)", type="primary", width='stretch'):
                 st.session_state.view_limit += ITEMS_TO_ADD
                 st.rerun()
-                
-    elif len(df) > 0:
+    elif len(df_unique) > 0:
         st.caption(
             "<span style='font-weight: bold; text-align: center'>You have reached the end of the list. </span>",
             unsafe_allow_html=True
         )
     else:
         st.info("No results found matching your filters.")
+
+    if st.session_state.dialog_open:
+        ner_dialog(df_unique, df)

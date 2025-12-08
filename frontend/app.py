@@ -8,6 +8,8 @@ import pandas as pd
 import os
 from supabase import create_client
 
+st.set_page_config(layout="wide", page_title="Surabaya Opinion Analysis")
+
 load_dotenv()
 # Initialize Supabase
 url= os.environ.get("SUPABASE_URL")
@@ -17,7 +19,36 @@ if url is None or key is None:
     raise Exception("Missing Supabase URL or key")
 supabase = create_client(url, key)
 
-st.set_page_config(layout="wide", page_title="Surabaya Opinion Analysis")
+@st.cache_data(ttl=600)
+def load_config():
+    response = supabase.table('app_config').select('key', 'value').execute()
+    return {
+        map['key']: map['value'] 
+        for map in response.data
+    }
+
+last_updated = load_config().get('last-updated', None)
+# last updated label
+st.html(f"""
+    <style>
+    .top-right-corner {{
+        position: fixed;
+        top: 0.8rem;
+        left: 5rem; 
+        z-index: 999991;
+        font-size: 1rem;
+        padding: 5px;
+        border-radius: 5px;
+        font-weight: 600;
+    }}
+    </style>
+    
+    <div class="top-right-corner">
+        Last Updated: {
+            pd.to_datetime(last_updated).strftime('%Y-%m-%d %H:%M:%S')
+        }
+    </div>
+    """)
 
 def fetch_all_rows(table_name):
     all_data = []
@@ -47,7 +78,7 @@ def fetch_all_rows(table_name):
     return all_data
 
 @st.cache_data(ttl=None, show_spinner="Loading and processing datasets...")
-def load_data():
+def load_data(last_updated):
     tweets_data = fetch_all_rows('tweets')
     reddit_data = fetch_all_rows('reddit_comments')
 
@@ -76,23 +107,11 @@ def load_data():
         df.drop(columns='topics', inplace=True)
     
     if 'entities' in df.columns:
-        print("Halo")
-        df = df.explode('entities') 
+        df = df.explode('entities').reset_index(drop=True)
         entities_df = pd.json_normalize(df['entities'])
         entities_df.columns = [f"entity_{c}" for c in entities_df.columns]
-        entities_df.index = df.index
-        df = df.join(entities_df).drop(columns='entities')
-
-    print(df.head())
+        df = pd.concat([df, entities_df], axis=1)
     return df
-
-@st.cache_data(ttl=600)
-def load_config():
-    response = supabase.table('app_config').select('key', 'value').execute()
-    return {
-        map['key']: map['value'] 
-        for map in response.data
-    }
 
 selected = option_menu(
     menu_title=None,
@@ -113,33 +132,96 @@ selected = option_menu(
     }
 )
 
-config = load_config()
-st.html(f"""
-    <style>
-    .top-right-corner {{
-        position: fixed;
-        top: 0.8rem;
-        left: 5rem; 
-        z-index: 99999999;
-        font-size: 1rem;
-        padding: 5px;
-        border-radius: 5px;
-        font-weight: 600;
-    }}
-    </style>
+def show_data_filter(df: pd.DataFrame, header: str):
+    st.header(header)
+
+    df_unique = df.drop_duplicates(subset="id") if 'id' in df.columns else df.copy()
+
+    min_date = df_unique["posted_at"].min().date()
+    max_date = df_unique["posted_at"].max().date()
+    unique_orgs = df[df['entity_label'] == 'ORG']['entity_text'].unique()
+    unique_pers = df[df['entity_label'] == 'PERSON']['entity_text'].unique()
+
+    with st.container(horizontal=True):
+        selected_start = st.date_input(
+            "Filter by Start Date",
+            value=min_date,
+            min_value=min_date,
+            max_value=max_date
+        )
+        selected_end = st.date_input(
+            "Filter by End Date",
+            value=max_date,
+            min_value=min_date,
+            max_value=max_date,
+        )
+        selected_topics = st.multiselect(
+            "Filter by Topic",
+            options=df_unique["topic"].unique(),
+            format_func=lambda x: "General" if x is None else x,
+            placeholder="Choose topics (leave empty for all)",
+        )
+
+    with st.container(horizontal=True):
+        selected_orgs = st.multiselect(
+            "Filter by Organization",
+            options=unique_orgs,
+            placeholder="Choose organizations (leave empty for all)",
+        )
+        selected_pers = st.multiselect(
+            "Filter by Person",
+            options=unique_pers,
+            placeholder="Choose people (leave empty for all)",
+        )
+        selected_sources = st.multiselect(
+            "Filter by Source Type",
+            options=df_unique["source_type"].unique(),
+            placeholder="Choose source types (leave empty for all)",
+        )
     
-    <div class="top-right-corner">
-        Last Updated: {
-            pd.to_datetime(config['last-updated']).strftime('%Y-%m-%d %H:%M:%S')
-        }
-    </div>
-    """)
+    if selected_start:
+        start_ts = pd.to_datetime(selected_start).tz_localize("UTC")
+        df_unique = df_unique[df_unique["posted_at"] >= start_ts]
+        df = df[df["posted_at"] >= start_ts]
+
+    if selected_end:
+        end_ts = (pd.to_datetime(selected_end) + pd.Timedelta(days=1)).tz_localize("UTC")
+        df_unique = df_unique[df_unique["posted_at"] < end_ts]
+        df = df[df["posted_at"] < end_ts]
+    
+    if selected_topics:
+        df_unique = df_unique[df_unique["topic"].isin(selected_topics)]
+        df = df[df["topic"].isin(selected_topics)]
+    
+    if selected_orgs:
+        df = df[
+            (df['entity_label'] == 'ORG') & 
+            (df['entity_text'].isin(selected_orgs))
+        ]
+        df_unique = df_unique[df_unique['id'].isin(df['id'].unique())]
+
+    if selected_pers:
+        df = df[
+            (df['entity_label'] == 'PERSON') & 
+            (df['entity_text'].isin(selected_pers))
+        ]
+        df_unique = df_unique[df_unique['id'].isin(df['id'].unique())]
+    
+    if selected_sources:
+        df_unique = df_unique[df_unique["source_type"].isin(selected_sources)]
+        df = df[df["source_type"].isin(selected_sources)]
+
+    return df, df_unique
 
 if selected == 'Dashboard':
-    df = load_data()
-    dashboard.show(df)
+    df = load_data(last_updated)
+    df, df_unique = show_data_filter(df, "Dashboard Page")
+    dashboard.show(df, df_unique)
+
 elif selected == 'Model Performance':
     diagnostics.show()
+
 elif selected == 'Data View':
-    df = load_data()
-    dataview.show(df)
+    df = load_data(last_updated)
+    df, df_unique = show_data_filter(df, "Data View Page")
+    dataview.show(df, df_unique)
