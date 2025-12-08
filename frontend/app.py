@@ -27,7 +27,10 @@ def fetch_all_rows(table_name):
     while True:
         # Fetch one page of data
         response = supabase.table(table_name) \
-            .select('*', 'topics(label)') \
+            .select(
+                '*', 'topics(label)', 
+                'entities(text, label, start, end, confidence_score, latitude, longitude)'
+            ) \
             .order('id', desc=False) \
             .limit(page_size) \
             .offset(current_page * page_size) \
@@ -64,13 +67,23 @@ def load_data():
         dfs_to_concat.append(df_reddit)
     
     df = pd.concat(dfs_to_concat, ignore_index=True)
-    if 'posted_at' in df.columns:
+    columns = df.columns
+    if 'posted_at' in columns:
         df['posted_at'] = pd.to_datetime(df['posted_at'])
     
-    if 'topics' in df.columns:
-        df['topic'] = df['topics'].apply(lambda x: x['label'] if x else None)
-        df.drop(columns=['topics', 'topic_id'], inplace=True)
+    if 'topics' in columns:
+        df['topic'] = df['topics'].str.get('label')
+        df.drop(columns='topics', inplace=True)
+    
+    if 'entities' in df.columns:
+        print("Halo")
+        df = df.explode('entities') 
+        entities_df = pd.json_normalize(df['entities'])
+        entities_df.columns = [f"entity_{c}" for c in entities_df.columns]
+        entities_df.index = df.index
+        df = df.join(entities_df).drop(columns='entities')
 
+    print(df.head())
     return df
 
 @st.cache_data(ttl=600)

@@ -2,7 +2,7 @@ from transformers import pipeline, AutoModelForTokenClassification, AutoTokenize
 import torch
 from typing import List, Dict, cast
 from src.training.train_topics_model import fetch_all_rows
-from .core import log, supabase
+from .core import log, supabase, config
 import pandas as pd
 from tqdm import tqdm
 
@@ -53,7 +53,10 @@ def extract_entities_batch(texts: pd.Series, batch_size: int = 16) -> List[List[
             [
                 {
                     **ent,
-                    'word' : ent['word'].replace("##", ""),
+                    'word' : normalize_entity(
+                        ent['word'].replace("##", ""),
+                        ent['entity_group']
+                    ),
                 }
                 for ent in result
             ]
@@ -64,16 +67,79 @@ def extract_entities_batch(texts: pd.Series, batch_size: int = 16) -> List[List[
         log.error(f"Error in NER extraction: {e}")
         return [[] for _ in texts]
 
+def normalize_entity(text: str, label: str) -> str:
+    """
+    Normalize entities based on their type:
+    - LOC: Location names, roads, kecamatan, kelurahan, city abbreviations
+    - PERSON: Public figures, politicians, common name variations
+    - ORG: Companies, brands, organizations
+    """
+    original = text
+    t = text.lower().strip()
+    
+    #LOC
+    if label == "LOC":
+        # Road names
+        road_prefixes = ["jl", "jl.", "jln", "jln."]
+        for pref in road_prefixes:
+            if t.startswith(pref + " "):
+                return "jalan " + original[len(pref)+1:]
+            if t == pref:
+                return "jalan"
+
+        # Kecamatan
+        kec_prefixes = ["kec", "kec.", "kc", "kc."]
+        for pref in kec_prefixes:
+            if t.startswith(pref + " "):
+                return "kecamatan " + original[len(pref)+1:]
+            if t == pref:
+                return "kecamatan"
+
+        # Kelurahan
+        kel_prefixes = ["kel", "kel."]
+        for pref in kel_prefixes:
+            if t.startswith(pref + " "):
+                return "kelurahan " + original[len(pref)+1:]
+            if t == pref:
+                return "kelurahan"
+        
+        if t in config.loc_abbr:
+            return config.loc_abbr[t]
+
+        # Partial matches
+        if "sby" in t:
+            return "Surabaya"
+        if "jak" in t or "jkt" in t:
+            return "Jakarta"
+        if "bdg" in t:
+            return "Bandung"
+        if "mlg" in t or "malang" in t:
+            return "Malang"
+        if "sda" in t:
+            return "Sidoarjo"
+
+    #PERSON
+    elif label == "PERSON":
+        if t in config.per_abbr:
+            return config.per_abbr[t]
+
+    #ORG
+    elif label == "ORG":
+        if t in config.org_abbr:
+            return config.org_abbr[t]
+    
+    return original
+
 def save_ner_to_supabase(df: pd.DataFrame):
     entities_to_save = [
         {
             'tweet_id': row.id if row.source_type == 'twitter' else None,
             'reddit_comment_id': row.id if row.source_type == 'reddit' else None,
-            'entity_label': ent['entity_group'],
-            'entity_text': ent['word'],
+            'label': ent['entity_group'],
+            'text': ent['word'],
             'confidence_score': float(ent['score']),
-            'start_position': ent['start'],
-            'end_position': ent['end']
+            'start': ent['start'],
+            'end': ent['end']
         }
         for row in df.itertuples()
         for ent in cast(List[Dict], row.entities)
