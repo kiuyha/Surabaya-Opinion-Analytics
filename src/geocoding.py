@@ -5,10 +5,11 @@ from geopy.location import Location
 from geopy.exc import GeocoderTimedOut, GeocoderServiceError
 from tqdm import tqdm
 from .core import log, config
+import time
 
 GEOLOCATOR = Nominatim(user_agent="surabaya_opinion_analysis_project")
 
-def get_coordinates(location_name: str) -> Dict[str, Any]:
+def get_coordinates(location_name: str, attempt: int = 1, max_attempts: int = 3) -> Dict[str, Any]:
     """
     Retrieve coordinates (latitude and longitude) for the location name.
     Return a dictionary with 'latitude' and 'longitude' (None if unsuccessful).
@@ -29,9 +30,13 @@ def get_coordinates(location_name: str) -> Dict[str, Any]:
                 coords['latitude'] = location_fallback.latitude
                 coords['longitude'] = location_fallback.longitude
 
-    except GeocoderTimedOut:
-        log.warning(f"Geocoding timed out for: {location_name}.")
-    except (GeocoderServiceError, Exception) as e:
+    except (GeocoderTimedOut, GeocoderServiceError):
+        if attempt <= max_attempts:
+            print(f"Timeout for {location_name}. Retrying ({attempt}/{max_attempts})...")
+            time.sleep(2 * attempt)
+            return get_coordinates(location_name, attempt + 1, max_attempts)
+        
+    except Exception as e:
         log.error(f"Geocoding error for {location_name}: {e}")
         
     return coords
@@ -55,6 +60,7 @@ def run_geocoding(df: pd.DataFrame):
     loc_map = {}
     for loc_text in tqdm(unique_locs, desc="Geocoding", unit="loc"):
         loc_map[loc_text] = get_coordinates(str(loc_text))
+        time.sleep(1.1)
 
     updated_count = 0
     for entities in df['entities']:
