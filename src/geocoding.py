@@ -39,7 +39,7 @@ def get_coordinates(location_name: str, attempt: int = 1, max_attempts: int = 3)
     except (GeocoderTimedOut, GeocoderServiceError):
         if attempt <= max_attempts:
             print(f"Timeout for {location_name}. Retrying ({attempt}/{max_attempts})...")
-            time.sleep(2 * attempt)
+            time.sleep(attempt + 1)
             return get_coordinates(location_name, attempt + 1, max_attempts)
         
     except Exception as e:
@@ -66,7 +66,7 @@ def run_geocoding(df: pd.DataFrame):
     loc_map = {}
     for loc_text in tqdm(unique_locs, desc="Geocoding", unit="loc"):
         loc_map[loc_text] = get_coordinates(str(loc_text))
-        time.sleep(1.1)
+        time.sleep(1)
 
     updated_count = 0
     for entities in df['entities']:
