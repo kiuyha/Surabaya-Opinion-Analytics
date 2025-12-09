@@ -3,13 +3,60 @@ This file only run for weekly pipeline to get new tweets. For the monthly retrai
 """
 from datetime import datetime, timezone
 import numpy as np
-from src.ner import extract_entities_batch, save_ner_to_supabase
+from src.geocoding import run_geocoding
+from src.ner import extract_entities_batch
 from src.sentiment import predict_sentiment_batch
 from src.topics import predict_topics
 from .core import config, supabase, log
 from .scraper import scrap_nitter, scrape_reddit
 from .preprocess import processing_text
+from .geocoding import run_geocoding
 import pandas as pd
+from typing import List, Dict, cast
+
+def upload_data(df: pd.DataFrame, table_name: str, source_type: str):
+    processed_reddit = df[df['source_type'] == source_type].copy()
+    data_to_upload = (
+        processed_reddit
+        .drop(['source_type'], axis=1)
+        .dropna(axis=1, how='all')
+        .astype(object)
+        .replace({
+            pd.NA: None,
+            np.nan: None
+        })
+    )
+
+    log.info(f"Uploading {len(data_to_upload)} {source_type} records...")
+    supabase.table(table_name).upsert(data_to_upload.to_dict(orient='records')).execute()
+
+def save_entities_to_supabase(df: pd.DataFrame):
+    entities_to_save = [
+        {
+            'tweet_id': row.id if row.source_type == 'twitter' else None,
+            'reddit_comment_id': row.id if row.source_type == 'reddit' else None,
+            'label': ent.get('entity_group'),
+            'text': ent.get('word'),
+            'confidence_score': float(ent['score']) if ent.get('score') else None,
+            'start': ent.get('start'),
+            'end': ent.get('end'),
+            'latitude': ent.get('latitude'),
+            'longitude': ent.get('longitude'),
+        }
+        for row in df.itertuples()
+        for ent in cast(List[Dict], row.entities)
+    ]
+
+    # Save entities to database
+    if entities_to_save:
+        log.info(f"Uploading {len(entities_to_save)} entities...")
+        try:
+            supabase.table('entities').upsert(
+                entities_to_save,
+                on_conflict='tweet_id, reddit_comment_id, text, start'
+            ).execute()
+        except Exception as e:
+            log.error(f"Error uploading entities: {e}")
 
 if __name__ == "__main__":
     # Check if training is in progress
@@ -74,41 +121,23 @@ if __name__ == "__main__":
     # Predictions
     full_df['sentiment'] = predict_sentiment_batch(full_df['processed_text_hard'])
     full_df['topic_id'] = predict_topics(full_df['processed_text_hard'])
-    full_df['entities'] = extract_entities_batch(full_df['processed_text_light'])
-    
-    # Prepare entities for database
-    log.info("Preparing entities for database...")
-    save_ner_to_supabase(full_df)
 
     # Save to database
     if not df_tweets.empty:
-        processed_tweets = full_df[full_df['source_type'] == 'twitter'].copy()
-        tweets_to_upload = (
-            processed_tweets
-            .drop(['source_type'], axis=1)
-            .dropna(axis=1, how='all')
-            .convert_dtypes()
-            .replace({
-                pd.NA: None,
-                np.nan: None
-            })
-        )
-        
-        log.info(f"Uploading {len(tweets_to_upload)} tweets...")
-        supabase.table('tweets').upsert(tweets_to_upload.to_dict(orient='records')).execute()
+        upload_data(full_df, 'tweets', 'twitter')
 
     if not df_reddit.empty:
-        processed_reddit = full_df[full_df['source_type'] == 'reddit'].copy()
-        reddit_to_upload = (
-            processed_reddit
-            .drop(['source_type'], axis=1)
-            .dropna(axis=1, how='all')
-            .convert_dtypes()
-            .replace({
-                pd.NA: None,
-                np.nan: None
-            })
-        )
+        upload_data(full_df, 'reddit_comments', 'reddit')
+    
+    # NER
+    log.info("Starting NER...")
+    full_df['entities'] = extract_entities_batch(full_df['processed_text_light'])
+    log.info("NER completed.")
 
-        log.info(f"Uploading {len(reddit_to_upload)} reddit comments...")
-        supabase.table('reddit_comments').upsert(reddit_to_upload.to_dict(orient='records')).execute()
+    log.info("Starting geocoding LOC entities...")
+    run_geocoding(full_df) 
+    
+    # Prepare entities for database
+    save_entities_to_supabase(full_df)
+
+    log.info("Weekly pipeline run completed successfully.")

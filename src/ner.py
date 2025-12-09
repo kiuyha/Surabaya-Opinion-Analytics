@@ -1,10 +1,12 @@
 from transformers import pipeline, AutoModelForTokenClassification, AutoTokenizer
 import torch
-from typing import List, Dict, cast
+from typing import List, Dict
 from src.training.train_topics_model import fetch_all_rows
-from .core import log, supabase, config
+from .core import log, config
 import pandas as pd
 from tqdm import tqdm
+from .main import save_entities_to_supabase
+from .geocoding import run_geocoding
 
 # Initialize model and tokenizer
 MODEL_NAME = "Kiuyha/surabaya-opinion-indobert-ner"
@@ -130,32 +132,6 @@ def normalize_entity(text: str, label: str) -> str:
     
     return original
 
-def save_ner_to_supabase(df: pd.DataFrame):
-    entities_to_save = [
-        {
-            'tweet_id': row.id if row.source_type == 'twitter' else None,
-            'reddit_comment_id': row.id if row.source_type == 'reddit' else None,
-            'label': ent['entity_group'],
-            'text': ent['word'],
-            'confidence_score': float(ent['score']),
-            'start': ent['start'],
-            'end': ent['end']
-        }
-        for row in df.itertuples()
-        for ent in cast(List[Dict], row.entities)
-    ]
-
-    # Save entities to database
-    if entities_to_save:
-        log.info(f"Uploading {len(entities_to_save)} entities...")
-        try:
-            supabase.table('entities').upsert(
-                entities_to_save,
-                on_conflict='tweet_id, reddit_comment_id, text, start'
-            ).execute()
-        except Exception as e:
-            log.error(f"Error uploading entities: {e}")
-
 if __name__ == "__main__":
     tweets_data = fetch_all_rows('tweets', ['id', 'processed_text_light'])
     reddit_data = fetch_all_rows('reddit_comments', ['id', 'processed_text_light'])
@@ -178,5 +154,14 @@ if __name__ == "__main__":
     df = pd.concat(dfs_to_concat, ignore_index=True)
     log.info(f"NER on {len(df)} records...")
 
+    # NER
+    log.info("Starting NER...")
     df['entities'] = extract_entities_batch(df['processed_text_light'])
-    save_ner_to_supabase(df)
+    log.info("NER completed.")
+
+    log.info("Starting geocoding LOC entities...")
+    run_geocoding(df) 
+    
+    # Prepare entities for database
+    save_entities_to_supabase(df)
+    save_entities_to_supabase(df)
