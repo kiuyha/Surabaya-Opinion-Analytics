@@ -4,7 +4,7 @@ This file only run for weekly pipeline to get new tweets. For the monthly retrai
 from datetime import datetime, timezone
 import numpy as np
 from src.geocoding import run_geocoding
-from src.ner import extract_entities_batch
+from src.ner import extract_entities_batch, save_entities_to_supabase
 from src.sentiment import predict_sentiment_batch
 from src.topics import predict_topics
 from .core import config, supabase, log
@@ -12,7 +12,6 @@ from .scraper import scrap_nitter, scrape_reddit
 from .preprocess import processing_text
 from .geocoding import run_geocoding
 import pandas as pd
-from typing import List, Dict, cast
 
 def upload_data(df: pd.DataFrame, table_name: str, source_type: str):
     processed_reddit = df[df['source_type'] == source_type].copy()
@@ -29,34 +28,6 @@ def upload_data(df: pd.DataFrame, table_name: str, source_type: str):
 
     log.info(f"Uploading {len(data_to_upload)} {source_type} records...")
     supabase.table(table_name).upsert(data_to_upload.to_dict(orient='records')).execute()
-
-def save_entities_to_supabase(df: pd.DataFrame):
-    entities_to_save = [
-        {
-            'tweet_id': row.id if row.source_type == 'twitter' else None,
-            'reddit_comment_id': row.id if row.source_type == 'reddit' else None,
-            'label': ent.get('entity_group'),
-            'text': ent.get('word'),
-            'confidence_score': float(ent['score']) if ent.get('score') else None,
-            'start': ent.get('start'),
-            'end': ent.get('end'),
-            'latitude': ent.get('latitude'),
-            'longitude': ent.get('longitude'),
-        }
-        for row in df.itertuples()
-        for ent in cast(List[Dict], row.entities)
-    ]
-
-    # Save entities to database
-    if entities_to_save:
-        log.info(f"Uploading {len(entities_to_save)} entities...")
-        try:
-            supabase.table('entities').upsert(
-                entities_to_save,
-                on_conflict='tweet_id, reddit_comment_id, text, start'
-            ).execute()
-        except Exception as e:
-            log.error(f"Error uploading entities: {e}")
 
 if __name__ == "__main__":
     # Check if training is in progress

@@ -1,11 +1,10 @@
 from transformers import pipeline, AutoModelForTokenClassification, AutoTokenizer
 import torch
-from typing import List, Dict
+from typing import List, Dict, cast
 from src.training.train_topics_model import fetch_all_rows
-from .core import log, config
+from .core import log, config, supabase
 import pandas as pd
 from tqdm import tqdm
-from .main import save_entities_to_supabase
 from .geocoding import run_geocoding
 
 # Initialize model and tokenizer
@@ -131,6 +130,34 @@ def normalize_entity(text: str, label: str) -> str:
             return config.org_abbr[t]
     
     return original
+
+def save_entities_to_supabase(df: pd.DataFrame):
+    entities_to_save = [
+        {
+            'tweet_id': row.id if row.source_type == 'twitter' else None,
+            'reddit_comment_id': row.id if row.source_type == 'reddit' else None,
+            'label': ent.get('entity_group'),
+            'text': ent.get('word'),
+            'confidence_score': float(ent['score']) if ent.get('score') else None,
+            'start': ent.get('start'),
+            'end': ent.get('end'),
+            'latitude': ent.get('latitude'),
+            'longitude': ent.get('longitude'),
+        }
+        for row in df.itertuples()
+        for ent in cast(List[Dict], row.entities)
+    ]
+
+    # Save entities to database
+    if entities_to_save:
+        log.info(f"Uploading {len(entities_to_save)} entities...")
+        try:
+            supabase.table('entities').upsert(
+                entities_to_save,
+                on_conflict='tweet_id, reddit_comment_id, text, start'
+            ).execute()
+        except Exception as e:
+            log.error(f"Error uploading entities: {e}")
 
 if __name__ == "__main__":
     tweets_data = fetch_all_rows('tweets', ['id', 'processed_text_light'])
