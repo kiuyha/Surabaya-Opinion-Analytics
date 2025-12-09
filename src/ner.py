@@ -143,6 +143,7 @@ def save_entities_to_supabase(df: pd.DataFrame):
             'end': ent.get('end'),
             'latitude': ent.get('latitude'),
             'longitude': ent.get('longitude'),
+            'normalized_address' : ent.get('normalized_address')
         }
         for row in df.itertuples()
         for ent in cast(List[Dict], row.entities)

@@ -14,7 +14,11 @@ def get_coordinates(location_name: str, attempt: int = 1, max_attempts: int = 3)
     Retrieve coordinates (latitude and longitude) for the location name.
     Return a dictionary with 'latitude' and 'longitude' (None if unsuccessful).
     """
-    coords = {'latitude': None, 'longitude': None}
+    coords = {
+        'latitude': None,
+        'longitude': None,
+        'normalized_address': None
+    }
     
     try:
         query = f"{location_name}, Surabaya, Indonesia"
@@ -23,12 +27,14 @@ def get_coordinates(location_name: str, attempt: int = 1, max_attempts: int = 3)
         if location:
             coords['latitude'] = location.latitude
             coords['longitude'] = location.longitude
+            coords['normalized_address'] = location.address
         else:
             query_fallback = f"{location_name}, Indonesia"
             location_fallback = cast(Optional[Location], GEOLOCATOR.geocode(query_fallback, timeout=10.0)) # type: ignore
             if location_fallback:
                 coords['latitude'] = location_fallback.latitude
                 coords['longitude'] = location_fallback.longitude
+                coords['normalized_address'] = location_fallback.address
 
     except (GeocoderTimedOut, GeocoderServiceError):
         if attempt <= max_attempts:
@@ -70,11 +76,14 @@ def run_geocoding(df: pd.DataFrame):
                     coords = loc_map[ent['word']]
                     ent['latitude'] = coords['latitude']
                     ent['longitude'] = coords['longitude']
+                    ent['normalized_address'] = coords['normalized_address']
                     updated_count += 1
                 else:
                     if 'latitude' not in ent:
                         ent['latitude'] = None
                     if 'longitude' not in ent:
                         ent['longitude'] = None
+                    if 'normalized_address' not in ent:
+                        ent['normalized_address'] = None
 
     log.info(f"Geocoding completed. enriched {updated_count} entities with coordinates.")
