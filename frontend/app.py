@@ -60,7 +60,7 @@ def fetch_all_rows(table_name):
         response = supabase.table(table_name) \
             .select(
                 '*', 'topics(label)', 
-                'entities(text, label, start, end, confidence_score, latitude, longitude)'
+                'entities(text, label, start, end, confidence_score, normalized_address, latitude, longitude)'
             ) \
             .order('id', desc=False) \
             .limit(page_size) \
@@ -104,12 +104,13 @@ def load_data(last_updated):
     
     if 'topics' in columns:
         df['topic'] = df['topics'].str.get('label')
-        df.drop(columns='topics', inplace=True)
+        df.drop(columns=['topics', 'topic_id'], inplace=True)
     
     if 'entities' in df.columns:
         df = df.explode('entities').reset_index(drop=True)
         entities_df = pd.json_normalize(df['entities'])
         entities_df.columns = [f"entity_{c}" for c in entities_df.columns]
+        df.drop(columns=['entities'], inplace=True)
         df = pd.concat([df, entities_df], axis=1)
     return df
 
@@ -139,8 +140,8 @@ def show_data_filter(df: pd.DataFrame, header: str):
 
     min_date = df_unique["posted_at"].min().date()
     max_date = df_unique["posted_at"].max().date()
-    unique_orgs = df[df['entity_label'] == 'ORG']['entity_text'].unique()
-    unique_pers = df[df['entity_label'] == 'PERSON']['entity_text'].unique()
+    unique_orgs = df[df['entity_label'] == 'ORG']['entity_text'].value_counts().index
+    unique_pers = df[df['entity_label'] == 'PERSON']['entity_text'].value_counts().index
 
     with st.container(horizontal=True):
         selected_start = st.date_input(

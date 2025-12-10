@@ -4,6 +4,9 @@ import plotly.express as px
 from wordcloud import WordCloud
 from collections import Counter
 from matplotlib.figure import Figure
+from dataview import highlight_entities
+from config import SENTIMENT_COLORS
+import textwrap
 
 def show(df: pd.DataFrame, df_unique=pd.DataFrame()):
     top_word_pos, top_word_neg = st.columns(2, border=True)
@@ -98,7 +101,7 @@ def show(df: pd.DataFrame, df_unique=pd.DataFrame()):
     
     with top_org:
         if 'entity_label' in df.columns:
-            org_series = df[df['entity_label'] == 'ORG']['entity_text']
+            org_series = df[df['entity_label'] == 'ORG']['entity_text'].str.title()
             if not org_series.empty:
                 df_org = org_series.value_counts().reset_index()
                 df_org.columns = ['Label', 'Count']
@@ -110,7 +113,7 @@ def show(df: pd.DataFrame, df_unique=pd.DataFrame()):
 
     with top_per:
         if 'entity_label' in df.columns:
-            per_series = df[df['entity_label'] == 'PERSON']['entity_text']
+            per_series = df[df['entity_label'] == 'PERSON']['entity_text'].str.title()
             if not per_series.empty:
                 df_per = per_series.value_counts().reset_index()
                 df_per.columns = ['Label', 'Count']
@@ -119,6 +122,159 @@ def show(df: pd.DataFrame, df_unique=pd.DataFrame()):
                 st.info("No persons found.")
         else:
             st.warning("Entity data missing.")
+    
+    render_map(df)
+    
+@st.fragment
+def render_map(df: pd.DataFrame):
+    with st.container(border=True):
+        st.subheader("Map View")
+        df_map = df.dropna(subset=['entity_latitude', 'entity_longitude']).copy()
+
+        # Filtering data
+        confidence_filter, sentiment_filter = st.columns(2)
+
+        with confidence_filter:
+            min_confidence = st.slider(
+                "Filter by NER Confidence Score", 
+                min_value=0.0, 
+                max_value=1.0, 
+                value=0.5, 
+                step=0.01,
+                help="Adjust to hide locations where the model was less sure about the extraction.",
+            )
+
+        with sentiment_filter:
+            sentiment_filter = st.multiselect(
+                "Filter by Sentiment",
+                options=df_map["sentiment"].unique(),
+                placeholder="Choose sentiments (leave empty for all)",
+                default=['positive', 'negative']
+            )
+        
+        df_map = df_map[df_map['entity_confidence_score'] >= min_confidence]
+        if sentiment_filter:
+            df_map = df_map[df_map['sentiment'].isin(sentiment_filter)]
+
+        show_selected_record = st.checkbox(
+            "Show selected record",
+            value=True,
+            help="Check to show the selected record section beside the map."
+        )
+
+        if df_map.empty:
+            st.warning(f"No locations found with confidence score >= {min_confidence}")
+            return
+
+        def wrap_text(text, width=40):
+            if not isinstance(text, str): return str(text)
+            return "<br>".join(textwrap.wrap(text, width=width))
+
+        df_map['wrapped_address'] = df_map['entity_normalized_address'].apply(lambda x: wrap_text(x))
+
+        cols_to_sum = [
+            'like_count', 'comment_count', 'retweet_count', 
+            'quote_count', 'upvote_count', 'downvote_count'
+        ]
+
+        df_map[cols_to_sum] = df_map[cols_to_sum].fillna(0)
+        
+        df_map['total_engagement'] = (
+            df_map['like_count'] + 
+            df_map['comment_count'] + 
+            df_map['retweet_count'] + 
+            df_map['quote_count'] + 
+            df_map['upvote_count'] + 
+            df_map['downvote_count']
+        )
+
+        cap_value = df_map['total_engagement'].quantile(0.95)
+        if cap_value == 0:
+            cap_value = 1 
+
+        df_map['size_scaled'] = (df_map['total_engagement'].clip(upper=cap_value) / cap_value) * 20
+
+        col_map, col_details = st.columns(
+            [2, 1],
+            gap="medium",
+        )
+
+        if not show_selected_record:
+            col_map = st.empty()
+
+        with col_map:
+            fig = px.scatter_mapbox(
+                df_map,
+                lat="entity_latitude",
+                lon="entity_longitude",
+                size="size_scaled",
+                color="sentiment",
+                color_discrete_map=SENTIMENT_COLORS,
+                hover_name="wrapped_address", 
+                hover_data={
+                    "entity_confidence_score": ":.2f",
+                    "entity_text": True,
+                    "total_engagement": True,
+                    "source_type": True,
+                    "entity_latitude": False,
+                    "entity_longitude": False,
+                    "size_scaled": False,
+                },
+                zoom=11,
+                center={"lat": -7.2575, "lon": 112.7521}, # Centered on Surabaya
+                mapbox_style="carto-positron",
+                opacity=0.6,
+                height=600
+            )
+
+            fig.update_traces(marker=dict(sizemin=5, sizeref=0.1))
+            fig.update_layout(
+                legend=dict(
+                    orientation="v",
+                    xanchor="left",
+                    x=0,
+                    font=dict(weight=400)
+                ),
+                margin=dict(l=0, r=0, t=0, b=0)
+            )
+
+            event = st.plotly_chart(
+                fig, width='stretch',
+                on_select="rerun" if show_selected_record else 'ignore', 
+                selection_mode="points"
+            )
+    
+        if show_selected_record:
+            with col_details:
+                st.subheader("Selected Record")
+                selected_points = event.selection.get("points", [])
+                
+                if not selected_points:
+                    st.info("Click on a bubble in the map to view the full text and entities.")
+                    return
+                clicked_idx = selected_points[0]["point_index"]
+                try:
+                    selected_row = df_map.iloc[clicked_idx]
+                    selected_id = selected_row['id']
+                except IndexError:
+                    st.error("Selection error. Please try again.")
+                    return
+
+                tweet_entities = df[df['id'] == selected_id]
+                raw_text = selected_row.get('processed_text_light', '')
+
+                styled_html = highlight_entities(raw_text, tweet_entities)
+
+                st.html(f"""
+                <div style="border:1px solid #ddd; padding:15px; border-radius:10px; background-color:var(--secondary-background-color);">
+                    <div style="margin-bottom: 10px; font-weight: bold; color: gray;">
+                        ID: {selected_id} <br>
+                        Source: {selected_row['source_type'].title()}
+                    </div>
+                    {styled_html}
+                </div>
+                """)
+        
 @st.fragment
 def universal_chart(df: pd.DataFrame, label_col: str, value_col: str, title: str, enable_cloud: bool = False, default_config: dict = {}):
     head_col, settings_col = st.columns([0.80, 0.15], vertical_alignment="center")
