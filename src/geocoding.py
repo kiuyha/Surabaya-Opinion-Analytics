@@ -54,7 +54,7 @@ def run_geocoding(df: pd.DataFrame):
             for ent in entities:
                 if ent['entity_group'] == 'LOC':
                     # ignore location that is part of abbreviations since they are big cities or countries
-                    if ent['word'] not in config.loc_abbr.values():
+                    if ent['word'].lower() not in map(str.lower, config.loc_abbr.values()):
                         unique_locs.add(ent['word'])
     
     if not unique_locs:
