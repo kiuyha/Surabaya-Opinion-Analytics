@@ -4,6 +4,7 @@ import re
 import string
 import demoji
 import nltk
+import html
 from nltk.corpus import stopwords
 from .core import log, config
 
@@ -62,6 +63,15 @@ def processing_text(text: str, level: str = 'hard') -> str:
     """
     if not isinstance(text, str):
         return None
+    
+    # Remove HTML tags
+    previous_text = ""
+    while text != previous_text:
+        previous_text = text
+        text = html.unescape(text)
+    text = re.sub(r'<[^>]+>', ' ', text)
+    text = "".join(ch for ch in text if not unicodedata.category(ch).startswith('S'))
+    text = re.sub(r'[<>\[\]]', '', text)
 
     # Normalize unicode characters (e.g., '𝖒𝖚𝖉𝖆𝖍' -> 'mudah')
     text = unicodedata.normalize('NFKC', text)
@@ -112,6 +122,9 @@ def processing_text(text: str, level: str = 'hard') -> str:
         # Remove word that is actually a number, because it usually noise in topic modeling
         text = " ".join([word for word in text.split() if not word.isdigit()])
 
+        # remove surabaya since it in the query search
+        text = text.replace("surabaya", "")
+
     elif level == 'light':
         # Remove the '@' symbol from mentions but keep the name, as it's an entity (e.g., '@prabowo' -> 'prabowo')
         mention_pattern = re.compile(r'@(\w+)')
@@ -120,9 +133,6 @@ def processing_text(text: str, level: str = 'hard') -> str:
 
     # Replace emoji with its text description (e.g., '😊' -> '')
     text = demoji.replace(text, '')
-
-    # remove surabaya since it in the query search
-    text = text.replace("surabaya", "")
 
     # remove extra whitespace created during processing
     text = re.sub(r'\s+', ' ', text).strip()

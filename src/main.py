@@ -89,6 +89,12 @@ if __name__ == "__main__":
     full_df['processed_text_light'] = full_df['text_content'].apply(lambda x: processing_text(x, level='light'))
     full_df['processed_text_hard'] =  full_df['text_content'].apply(lambda x: processing_text(x, level='hard'))
 
+    # Remove empty rows
+    target_cols = ['processed_text_light', 'processed_text_hard']
+    full_df[target_cols] = full_df[target_cols].replace(r'^\s*$', np.nan, regex=True)
+    full_df.dropna(subset=target_cols, inplace=True)
+    log.info(f"Processed {len(full_df)} records.")
+
     # Predictions
     full_df['sentiment'] = predict_sentiment_batch(full_df['processed_text_hard'])
     full_df['topic_id'] = predict_topics(full_df['processed_text_hard'])
