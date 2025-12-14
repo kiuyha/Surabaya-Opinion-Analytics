@@ -15,3 +15,4 @@ joblib
 plotly
 lxml
 tqdm
+geopy
