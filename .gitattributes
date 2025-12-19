@@ -1,0 +1,9 @@
+* text=auto
+
+.github export-ignore
+.vscode export-ignore
+.gitignore export-ignore
+.gitattributes export-ignore
+
+*.ipynb linguist-vendored
+*.ipynb -diff
