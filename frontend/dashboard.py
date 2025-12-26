@@ -145,13 +145,13 @@ def render_map(df: pd.DataFrame):
             )
 
         with sentiment_filter:
+            unique_sentiments = df_map["sentiment"].unique()
             sentiment_filter = st.multiselect(
                 "Filter by Sentiment",
-                options=df_map["sentiment"].unique(),
+                options=unique_sentiments,
                 placeholder="Choose sentiments (leave empty for all)",
-                default=['positive', 'negative']
+                default=["positive", "negative"] if "positive" in unique_sentiments and "negative" in unique_sentiments else [],
             )
-        
         df_map = df_map[df_map['entity_confidence_score'] >= min_confidence]
         if sentiment_filter:
             df_map = df_map[df_map['sentiment'].isin(sentiment_filter)]
