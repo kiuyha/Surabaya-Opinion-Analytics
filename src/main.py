@@ -15,6 +15,20 @@ import pandas as pd
 
 def upload_data(df: pd.DataFrame, table_name: str, source_type: str):
     processed_reddit = df[df['source_type'] == source_type].copy()
+
+    count_columns = [
+        'like_count',
+        'comment_count',
+        'quote_count',
+        'retweet_count',
+        'upvote_count',
+        'downvote_count'
+    ]
+    
+    for col in count_columns:
+        if col in processed_reddit.columns:
+            processed_reddit[col] = processed_reddit[col].fillna(0).astype(int)
+
     data_to_upload = (
         processed_reddit
         .drop(['source_type'], axis=1)
