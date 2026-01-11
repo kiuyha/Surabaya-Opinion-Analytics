@@ -14,7 +14,7 @@ from .geocoding import run_geocoding
 import pandas as pd
 
 def upload_data(df: pd.DataFrame, table_name: str, source_type: str):
-    processed_reddit = df[df['source_type'] == source_type].copy()
+    processed_df = df[df['source_type'] == source_type].copy()
 
     count_columns = [
         'like_count',
@@ -26,11 +26,11 @@ def upload_data(df: pd.DataFrame, table_name: str, source_type: str):
     ]
     
     for col in count_columns:
-        if col in processed_reddit.columns:
-            processed_reddit[col] = processed_reddit[col].fillna(0).astype(int)
+        if col in processed_df.columns:
+            processed_df[col] = processed_df[col].fillna(0).astype(int)
 
     data_to_upload = (
-        processed_reddit
+        processed_df
         .drop(['source_type'], axis=1)
         .dropna(axis=1, how='all')
         .astype(object)
