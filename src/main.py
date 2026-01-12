@@ -14,7 +14,7 @@ from .geocoding import run_geocoding
 import pandas as pd
 
 def upload_data(df: pd.DataFrame, table_name: str, source_type: str):
-    processed_df = df[df['source_type'] == source_type].copy()
+    processed_df = df[df['source_type'] == source_type].copy().dropna(axis=1, how='all')
 
     count_columns = [
         'like_count',
@@ -32,7 +32,6 @@ def upload_data(df: pd.DataFrame, table_name: str, source_type: str):
     data_to_upload = (
         processed_df
         .drop(['source_type'], axis=1)
-        .dropna(axis=1, how='all')
         .astype(object)
         .replace({
             pd.NA: None,
