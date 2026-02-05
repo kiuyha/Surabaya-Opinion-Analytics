@@ -14,8 +14,14 @@ from .geocoding import run_geocoding
 import pandas as pd
 
 def upload_data(df: pd.DataFrame, table_name: str, source_type: str):
-    processed_df = df[df['source_type'] == source_type].copy().dropna(axis=1, how='all')
+    source_df = df[df['source_type'] == source_type].copy().dropna(axis=1, how='all')
 
+    if source_df.empty:
+        log.info(f"No {source_type} records remaining after preprocessing. Skipping upload.")
+        return
+    
+    processed_df = source_df.dropna(axis=1, how='all')
+    
     count_columns = [
         'like_count',
         'comment_count',
