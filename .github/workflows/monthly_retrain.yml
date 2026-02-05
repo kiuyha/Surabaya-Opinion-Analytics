@@ -28,6 +28,7 @@ jobs:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           HF_REPO_KMEANS_ID: ${{ secrets.HF_REPO_KMEANS_ID }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          USE_GEMINI_API: ${{ secrets.USE_GEMINI_API }}
       
       - name: Upload Plot Artifact
         uses: actions/upload-artifact@v4
