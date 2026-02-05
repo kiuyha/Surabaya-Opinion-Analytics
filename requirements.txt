@@ -4,7 +4,7 @@ scikit-learn
 httpx
 gensim
 transformers
-huggingface-hub
+huggingface-hub==0.35.3
 demoji
 nltk
 supabase

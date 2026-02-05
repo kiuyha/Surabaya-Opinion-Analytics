@@ -155,7 +155,7 @@ class Config:
         Gets the Hugging Face token from an environment variable (for Actions)
         or the local folder (for development).
         """
-        from huggingface_hub import HfFolder
+        from huggingface_hub import get_token
 
         if self._hf_token is None:
             # Prioritize the environment variable for CI/CD environments
