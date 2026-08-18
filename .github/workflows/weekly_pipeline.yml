@@ -31,3 +31,11 @@ jobs:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           HF_REPO_KMEANS_ID: ${{ secrets.HF_REPO_KMEANS_ID }}
           HF_REPO_NER_ID: ${{ secrets.HF_REPO_NER_ID }}
+          
+  workflow-keepalive:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - uses: liskin/gh-workflow-keepalive@v1
